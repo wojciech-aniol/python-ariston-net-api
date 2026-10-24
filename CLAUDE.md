@@ -29,9 +29,14 @@ Tests and lint pass before every commit. CI (`tests.yml`) runs both, pytest on P
   imports them. A rename or removal needs the user's yes.
 - Every fix comes with a test that fails without it.
 - The version lives only in `pyproject.toml`.
-- A release is a GitHub release with a tag without `v` (`0.20.1`), made with
-  `gh release create`, only after the user's yes. It runs `publish.yml`, which uploads to PyPI
-  by trusted publishing. Never tag by hand. After a release the integration bumps its pin.
+- Releases are automatic (`.github/workflows/auto-release.yml`). Each PR merged into `main` that
+  changes `ariston_net_api/` gets a patch release; the PR label `patch`, `minor` or `major` always
+  releases with that bump, `no-release` never releases. It bumps `pyproject.toml`, tags without `v`
+  (`0.20.1`), publishes a GitHub release and starts `publish.yml`, which uploads to PyPI by
+  trusted publishing. Never bump the version, tag or release by hand. PR titles become the
+  release notes.
+- Within an hour the integration's `bump-library.yml` pins the new version, runs its tests and
+  releases the integration. If its tests fail, its PR stays open for a fix.
 - `origin` is this repo, `upstream` is fustom: never push there (its push URL is `DISABLED`).
 - Code, comments, commits and README are in English. Commit subject: imperative, no prefix,
   under 60 characters; the body says why. `.git-blame-ignore-revs` lists format-only commits.
