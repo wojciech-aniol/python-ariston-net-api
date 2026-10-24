@@ -1,11 +1,11 @@
 """Galevo device class for Ariston module."""
 
 from __future__ import annotations
-import asyncio
 
+import asyncio
 import logging
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
 from .ariston_api import AristonAPI
 from .const import (
@@ -18,12 +18,12 @@ from .const import (
     DeviceProperties,
     GasEnergyUnit,
     GasType,
+    MenuItemNames,
     PlantMode,
     PropertyType,
     ThermostatProperties,
     ZoneAttribute,
     ZoneMode,
-    MenuItemNames,
 )
 from .device import AristonDevice
 
@@ -43,9 +43,9 @@ class AristonGalevoDevice(AristonDevice):
         super().__init__(api, attributes)
         self.umsys = "si" if is_metric else "us"
         self.language_tag = language_tag
-        self.consumptions_settings: dict[str, Any] = dict()
-        self.energy_account: dict[str, Any] = dict()
-        self.menu_items: list[dict[str, Any]] = list()
+        self.consumptions_settings: dict[str, Any] = {}
+        self.energy_account: dict[str, Any] = {}
+        self.menu_items: list[dict[str, Any]] = []
 
     @property
     def consumption_type(self) -> str:
@@ -148,7 +148,7 @@ class AristonGalevoDevice(AristonDevice):
         return [zone.get(ZoneAttribute.NUM, 0) for zone in self.zones]
 
     @property
-    def water_heater_current_temperature(self) -> Optional[float]:
+    def water_heater_current_temperature(self) -> float | None:
         """Get water heater current temperature"""
         if self.custom_features.get(DeviceProperties.DHW_STORAGE_TEMPERATURE):
             return self._get_item_by_id(
@@ -162,12 +162,12 @@ class AristonGalevoDevice(AristonDevice):
         return self._get_item_by_id(DeviceProperties.DHW_TEMP, PropertyType.MIN)
 
     @property
-    def water_heater_maximum_temperature(self) -> Optional[float]:
+    def water_heater_maximum_temperature(self) -> float | None:
         """Get water heater maximum temperature"""
         return self._get_item_by_id(DeviceProperties.DHW_TEMP, PropertyType.MAX)
 
     @property
-    def water_heater_target_temperature(self) -> Optional[float]:
+    def water_heater_target_temperature(self) -> float | None:
         """Get water heater target temperature"""
         return self._get_item_by_id(DeviceProperties.DHW_TEMP, PropertyType.VALUE)
 
@@ -197,7 +197,7 @@ class AristonGalevoDevice(AristonDevice):
         return self._get_item_by_id(DeviceProperties.DHW_MODE, PropertyType.OPTIONS)
 
     @property
-    def water_heater_mode_value(self) -> Optional[int]:
+    def water_heater_mode_value(self) -> int | None:
         """Get water heater mode value"""
         return self._get_item_by_id(DeviceProperties.DHW_MODE, PropertyType.VALUE)
 
@@ -348,7 +348,7 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def is_quiet_value(self) -> Optional[str]:
+    def is_quiet_value(self) -> str | None:
         """Get is quiet value"""
         return self._get_item_by_id(DeviceProperties.IS_QUIET, PropertyType.VALUE)
 
@@ -360,7 +360,7 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def ch_flow_temp_value(self) -> Optional[str]:
+    def ch_flow_temp_value(self) -> str | None:
         """Get central heating flow temperature value"""
         return self._get_item_by_id(DeviceProperties.CH_FLOW_TEMP, PropertyType.VALUE)
 
@@ -633,17 +633,17 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def elect_cost(self) -> Optional[float]:
+    def elect_cost(self) -> float | None:
         """Get electric consumption cost"""
         return self.consumptions_settings.get(ConsumptionProperties.ELEC_COST, None)
 
     @property
-    def gas_cost(self) -> Optional[float]:
+    def gas_cost(self) -> float | None:
         """Get gas consumption cost"""
         return self.consumptions_settings.get(ConsumptionProperties.GAS_COST, None)
 
     @property
-    def gas_type(self) -> Optional[str]:
+    def gas_type(self) -> str | None:
         """Get gas type"""
         gas_type = self.consumptions_settings.get(ConsumptionProperties.GAS_TYPE, None)
         if gas_type in list(GasType):
@@ -668,7 +668,7 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def currency(self) -> Optional[str]:
+    def currency(self) -> str | None:
         """Get gas type"""
         currency = self.consumptions_settings.get(ConsumptionProperties.CURRENCY, None)
         if currency in list(Currency):
@@ -693,7 +693,7 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def gas_energy_unit(self) -> Optional[str]:
+    def gas_energy_unit(self) -> str | None:
         """Get gas energy unit"""
         gas_energy_unit = self.consumptions_settings.get(
             ConsumptionProperties.GAS_ENERGY_UNIT, None
@@ -720,7 +720,7 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def gas_consumption_for_heating_last_month(self) -> Optional[int]:
+    def gas_consumption_for_heating_last_month(self) -> int | None:
         """Get gas consumption for heatig last month"""
         energy_account_last_month = self.energy_account.get("LastMonth", None)
         if not energy_account_last_month:
@@ -728,7 +728,7 @@ class AristonGalevoDevice(AristonDevice):
         return energy_account_last_month[0].get("gas", None)
 
     @property
-    def electricity_consumption_for_heating_last_month(self) -> Optional[int]:
+    def electricity_consumption_for_heating_last_month(self) -> int | None:
         """Get electricity consumption for heating last month"""
         energy_account_last_month = self.energy_account.get("LastMonth", None)
         if not energy_account_last_month:
@@ -736,7 +736,7 @@ class AristonGalevoDevice(AristonDevice):
         return energy_account_last_month[0].get("elect", None)
 
     @property
-    def electricity_consumption_for_cooling_last_month(self) -> Optional[int]:
+    def electricity_consumption_for_cooling_last_month(self) -> int | None:
         """Get electricity consumption for cooling last month"""
         energy_account_last_month = self.energy_account.get("LastMonth", None)
         if not energy_account_last_month:
@@ -744,7 +744,7 @@ class AristonGalevoDevice(AristonDevice):
         return energy_account_last_month[0].get("cool", None)
 
     @property
-    def gas_consumption_for_water_last_month(self) -> Optional[int]:
+    def gas_consumption_for_water_last_month(self) -> int | None:
         """Get gas consumption for water last month"""
         energy_account_last_month = self.energy_account.get("LastMonth", None)
         if not energy_account_last_month or len(energy_account_last_month) < 2:
@@ -752,7 +752,7 @@ class AristonGalevoDevice(AristonDevice):
         return energy_account_last_month[1].get("gas", None)
 
     @property
-    def electricity_consumption_for_water_last_month(self) -> Optional[int]:
+    def electricity_consumption_for_water_last_month(self) -> int | None:
         """Get electricity consumption for water last month"""
         energy_account_last_month = self.energy_account.get("LastMonth", None)
         if not energy_account_last_month or len(energy_account_last_month) < 2:
@@ -977,15 +977,15 @@ class AristonGalevoDevice(AristonDevice):
         self._set_item_by_id(item_id, value, zone_number)
 
     @staticmethod
-    def _create_holiday_end_date(holiday_end: Optional[date]):
+    def _create_holiday_end_date(holiday_end: date | None):
         return (
             None if holiday_end is None else holiday_end.strftime("%Y-%m-%dT00:00:00")
         )
 
-    def _set_holiday(self, holiday_end_date: Optional[str]):
+    def _set_holiday(self, holiday_end_date: str | None):
         for item in self.data.get("items", list[dict[str, Any]]()):
             if item.get("id") == DeviceProperties.HOLIDAY:
-                item[PropertyType.VALUE] = False if holiday_end_date is None else True
+                item[PropertyType.VALUE] = holiday_end_date is not None
                 item[PropertyType.EXPIRES_ON] = (
                     None if holiday_end_date is None else holiday_end_date
                 )

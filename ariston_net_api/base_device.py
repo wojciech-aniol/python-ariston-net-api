@@ -5,15 +5,15 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from .ariston_api import AristonAPI
 from .const import (
     ConsumptionTimeInterval,
     ConsumptionType,
     CustomDeviceFeatures,
-    DeviceFeatures,
     DeviceAttribute,
+    DeviceFeatures,
     GalevoDeviceAttribute,
     SystemType,
     VelisDeviceAttribute,
@@ -34,12 +34,12 @@ class AristonBaseDevice(ABC):
         self.api = api
         self.attributes = attributes
 
-        self.features: dict[str, Any] = dict()
-        self.custom_features: dict[str, Any] = dict()
-        self.consumptions_sequences: list[dict[str, Any]] = list()
-        self.data: dict[str, Any] = dict()
+        self.features: dict[str, Any] = {}
+        self.custom_features: dict[str, Any] = {}
+        self.consumptions_sequences: list[dict[str, Any]] = []
+        self.data: dict[str, Any] = {}
         self.consumption_sequence_last_changed_utc: dt.datetime = (
-            dt.datetime.fromtimestamp(0, dt.UTC).replace(tzinfo=dt.timezone.utc)
+            dt.datetime.fromtimestamp(0, dt.UTC).replace(tzinfo=dt.UTC)
         )
         self.gw: str = self.attributes.get(DeviceAttribute.GW, "")
         self.bus_errors_list: list[dict[str, Any]] = []
@@ -86,32 +86,32 @@ class AristonBaseDevice(ABC):
         return self.gw
 
     @property
-    def has_metering(self) -> Optional[bool]:
+    def has_metering(self) -> bool | None:
         """Get device has metering wrapper"""
         return self.features.get(DeviceFeatures.HAS_METERING, None)
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         """Get device name wrapper"""
         return self.attributes.get(DeviceAttribute.NAME, None)
 
     @property
-    def has_dhw(self) -> Optional[bool]:
+    def has_dhw(self) -> bool | None:
         """Get device has domestic hot water"""
         return self.custom_features.get(CustomDeviceFeatures.HAS_DHW, None)
 
     @property
-    def dhw_mode_changeable(self) -> Optional[bool]:
+    def dhw_mode_changeable(self) -> bool | None:
         """Get device domestic hot water mode changeable wrapper"""
         return self.features.get(DeviceFeatures.DHW_MODE_CHANGEABLE, None)
 
     @property
-    def serial_number(self) -> Optional[str]:
+    def serial_number(self) -> str | None:
         """Get device serial number wrapper"""
         return self.attributes.get(DeviceAttribute.SN, None)
 
     @property
-    def firmware_version(self) -> Optional[str]:
+    def firmware_version(self) -> str | None:
         """Get device firmware version wrapper"""
         return self.attributes.get(GalevoDeviceAttribute.FW_VER, None)
 
@@ -121,7 +121,7 @@ class AristonBaseDevice(ABC):
         return self.bus_errors_list
 
     @property
-    def hpmp_sys(self) -> Optional[bool]:
+    def hpmp_sys(self) -> bool | None:
         """Get device heat pump multi power system"""
         return self.attributes.get(DeviceAttribute.HPMP_SYS, None)
 
@@ -156,7 +156,7 @@ class AristonBaseDevice(ABC):
 
     @property
     @abstractmethod
-    def water_heater_current_temperature(self) -> Optional[float]:
+    def water_heater_current_temperature(self) -> float | None:
         """Abstract method for get water heater current temperature"""
         raise NotImplementedError
 
@@ -174,7 +174,7 @@ class AristonBaseDevice(ABC):
 
     @property
     @abstractmethod
-    def water_heater_mode_value(self) -> Optional[int]:
+    def water_heater_mode_value(self) -> int | None:
         """Abstract method for get water heater mode value"""
         raise NotImplementedError
 
@@ -268,7 +268,7 @@ class AristonBaseDevice(ABC):
         return None
 
     def _update_energy(
-        self, old_consumptions_sequences: Optional[list[dict[str, Any]]]
+        self, old_consumptions_sequences: list[dict[str, Any]] | None
     ) -> None:
         """Update the device energy settings"""
         if (
@@ -285,7 +285,7 @@ class AristonBaseDevice(ABC):
             and old_consumptions_sequences != self.consumptions_sequences
         ):
             self.consumption_sequence_last_changed_utc = dt.datetime.now(
-                dt.timezone.utc
+                dt.UTC
             ) - dt.timedelta(hours=1)
 
     def update_energy(self) -> None:
@@ -324,9 +324,9 @@ class AristonBaseDevice(ABC):
 
     def are_device_features_available(
         self,
-        device_features: Optional[list[str]],
-        system_types: Optional[list[SystemType]],
-        whe_types: Optional[list[WheType]],
+        device_features: list[str] | None,
+        system_types: list[SystemType] | None,
+        whe_types: list[WheType] | None,
     ) -> bool:
         """Checks features availability"""
         if system_types is not None and self.system_type not in system_types:

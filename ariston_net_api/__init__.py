@@ -2,9 +2,11 @@
 
 import asyncio
 import logging
-from typing import Any, Optional, Type
+from typing import Any
 
 from .ariston_api import AristonAPI, ConnectionException
+from .base_device import AristonBaseDevice
+from .bsb_device import AristonBsbDevice
 from .const import (
     ARISTON_API_URL,
     ARISTON_USER_AGENT,
@@ -13,21 +15,19 @@ from .const import (
     VelisDeviceAttribute,
     WheType,
 )
-from .bsb_device import AristonBsbDevice
-from .lux_device import AristonLuxDevice
-from .lux2_device import AristonLux2Device
-from .evo_one_device import AristonEvoOneDevice
 from .evo_device import AristonEvoDevice
+from .evo_one_device import AristonEvoOneDevice
 from .galevo_device import AristonGalevoDevice
+from .lux2_device import AristonLux2Device
+from .lux_device import AristonLuxDevice
+from .lydos_device import AristonLydosDevice
 from .lydos_hybrid_device import AristonLydosHybridDevice
 from .nuos_split_device import AristonNuosSplitDevice
-from .base_device import AristonBaseDevice
 from .velis_base_device import AristonVelisBaseDevice
-from .lydos_device import AristonLydosDevice
 
 _LOGGER = logging.getLogger(__name__)
 
-_MAP_WHE_TYPES_TO_CLASS: dict[int, Type[AristonVelisBaseDevice]] = {
+_MAP_WHE_TYPES_TO_CLASS: dict[int, type[AristonVelisBaseDevice]] = {
     WheType.Evo.value: AristonEvoOneDevice,
     WheType.LydosHybrid.value: AristonLydosHybridDevice,
     WheType.Lydos.value: AristonLydosDevice,
@@ -68,7 +68,7 @@ class Ariston:
 
     async def async_hello(
         self, gateway: str, is_metric: bool = True, language_tag: str = "en-US"
-    ) -> Optional[AristonBaseDevice]:
+    ) -> AristonBaseDevice | None:
         """Get ariston device"""
         if self.api is None:
             _LOGGER.exception("Call async_connect() first")
@@ -88,7 +88,7 @@ def _get_device(
     gateway: str,
     is_metric: bool = True,
     language_tag: str = "en-US",
-) -> Optional[AristonBaseDevice]:
+) -> AristonBaseDevice | None:
     """Get ariston device"""
     device = next(
         (dev for dev in cloud_devices if dev.get(DeviceAttribute.GW) == gateway),
@@ -159,7 +159,7 @@ def hello(
     is_metric: bool = True,
     language_tag: str = "en-US",
     api_url: str = ARISTON_API_URL,
-) -> Optional[AristonBaseDevice]:
+) -> AristonBaseDevice | None:
     """Get ariston device"""
     api = _connect(username, password, api_url)
     cloud_devices = _discover(api)
@@ -209,7 +209,7 @@ async def async_hello(
     is_metric: bool = True,
     language_tag: str = "en-US",
     api_url: str = ARISTON_API_URL,
-) -> Optional[AristonBaseDevice]:
+) -> AristonBaseDevice | None:
     """Get ariston device"""
     api = await _async_connect(username, password, api_url)
     cloud_devices = await _async_discover(api)

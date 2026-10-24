@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from .ariston_api import AristonAPI
+from .base_device import AristonBaseDevice
 from .const import (
     CustomDeviceFeatures,
     DeviceFeatures,
@@ -14,7 +15,6 @@ from .const import (
     VelisBaseDeviceProperties,
     WaterHeaterMode,
 )
-from .base_device import AristonBaseDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class AristonVelisBaseDevice(AristonBaseDevice, ABC):
         attributes: dict[str, Any],
     ) -> None:
         super().__init__(api, attributes)
-        self.plant_settings: dict[str, Any] = dict()
+        self.plant_settings: dict[str, Any] = {}
 
     @property
     @abstractmethod
@@ -95,11 +95,11 @@ class AristonVelisBaseDevice(AristonBaseDevice, ABC):
         await self.async_update_settings()
 
     @property
-    def water_heater_mode_value(self) -> Optional[int]:
+    def water_heater_mode_value(self) -> int | None:
         """Get water heater mode value"""
         return self.data.get(VelisBaseDeviceProperties.MODE, None)
 
     @property
-    def water_heater_power_value(self) -> Optional[bool]:
+    def water_heater_power_value(self) -> bool | None:
         """Get water heater power value"""
         return self.data.get(VelisBaseDeviceProperties.ON, None)

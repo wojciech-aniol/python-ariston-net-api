@@ -2,39 +2,39 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
-import asyncio
 import aiohttp
 import requests
 
 from .const import (
     ARISTON_API_URL,
-    ARISTON_USER_AGENT,
     ARISTON_BSB_ZONES,
     ARISTON_BUS_ERRORS,
     ARISTON_DATA_ITEMS,
     ARISTON_LITE,
     ARISTON_LOGIN,
+    ARISTON_MENU_ITEMS,
     ARISTON_PLANTS,
     ARISTON_REMOTE,
     ARISTON_REPORTS,
     ARISTON_TIME_PROGS,
+    ARISTON_USER_AGENT,
     ARISTON_VELIS,
-    ARISTON_MENU_ITEMS,
     BsbOperativeMode,
     BsbZoneMode,
     DeviceFeatures,
     DeviceProperties,
     LydosPlantMode,
+    MenuItemNames,
     NuosSplitOperativeMode,
     PlantData,
     ThermostatProperties,
     WaterHeaterMode,
     ZoneAttribute,
-    MenuItemNames,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,14 +85,14 @@ class AristonAPI:
         devices = self._get(f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_PLANTS}")
         if devices is not None:
             return list(devices)
-        return list()
+        return []
 
     def get_detailed_velis_devices(self) -> list[Any]:
         """Get detailed cloud devices"""
         devices = self._get(f"{self.__api_url}{ARISTON_VELIS}/{ARISTON_PLANTS}")
         if devices is not None:
             return list(devices)
-        return list()
+        return []
 
     def get_devices(self) -> list[Any]:
         """Get cloud devices"""
@@ -101,7 +101,7 @@ class AristonAPI:
         )
         if devices is not None:
             return list(devices)
-        return list()
+        return []
 
     def get_features_for_device(self, gw_id: str) -> dict[str, Any]:
         """Get features for the device"""
@@ -110,7 +110,7 @@ class AristonAPI:
         )
         if features is not None:
             return features
-        return dict()
+        return {}
 
     def get_energy_account(self, gw_id: str) -> dict[str, Any]:
         """Get energy account for the device"""
@@ -119,7 +119,7 @@ class AristonAPI:
         )
         if energy_account is not None:
             return energy_account
-        return dict()
+        return {}
 
     def get_consumptions_sequences(self, gw_id: str, usages: str) -> list[Any]:
         """Get consumption sequences for the device"""
@@ -128,7 +128,7 @@ class AristonAPI:
         )
         if consumptions_sequences is not None:
             return list(consumptions_sequences)
-        return list()
+        return []
 
     def get_consumptions_settings(self, gw_id: str) -> dict[str, Any]:
         """Get consumption settings"""
@@ -138,7 +138,7 @@ class AristonAPI:
         )
         if consumptions_settings is not None:
             return consumptions_settings
-        return dict()
+        return {}
 
     def set_consumptions_settings(
         self,
@@ -174,7 +174,7 @@ class AristonAPI:
         )
         if properties is not None:
             return properties
-        return dict()
+        return {}
 
     def get_bsb_plant_data(self, gw_id: str) -> dict[str, Any]:
         """Get BSB plant data."""
@@ -183,14 +183,14 @@ class AristonAPI:
         )
         if data is not None:
             return data
-        return dict()
+        return {}
 
     def get_velis_plant_data(self, plant_data: PlantData, gw_id: str) -> dict[str, Any]:
         """Get Velis properties"""
         data = self._get(f"{self.__api_url}{ARISTON_VELIS}/{plant_data.value}/{gw_id}")
         if data is not None:
             return data
-        return dict()
+        return {}
 
     def get_velis_plant_settings(
         self, plant_data: PlantData, gw_id: str
@@ -201,7 +201,7 @@ class AristonAPI:
         )
         if settings is not None:
             return settings
-        return dict()
+        return {}
 
     def get_menu_items(self, gw_id: str) -> list[dict[str, Any]]:
         """Get menu items"""
@@ -210,7 +210,7 @@ class AristonAPI:
         )
         if items is not None:
             return items
-        return list()
+        return []
 
     def set_property(
         self,
@@ -320,8 +320,8 @@ class AristonAPI:
         gw_id: str,
         comfort: float,
         reduced: float,
-        old_comfort: Optional[float],
-        old_reduced: Optional[float],
+        old_comfort: float | None,
+        old_reduced: float | None,
     ) -> None:
         """Set Nuos temperature"""
         self._post(
@@ -343,8 +343,8 @@ class AristonAPI:
         gw_id: str,
         comfort: float,
         reduced: float,
-        old_comfort: Optional[float],
-        old_reduced: Optional[float],
+        old_comfort: float | None,
+        old_reduced: float | None,
     ) -> None:
         """Set Bsb temperature"""
         self._post(
@@ -367,8 +367,8 @@ class AristonAPI:
         zone: int,
         comfort: float,
         reduced: float,
-        old_comfort: Optional[float],
-        old_reduced: Optional[float],
+        old_comfort: float | None,
+        old_reduced: float | None,
         is_cooling: bool,
     ) -> None:
         """Set Bsb zone temperature"""
@@ -437,12 +437,12 @@ class AristonAPI:
         )
         if thermostat_time_progs is not None:
             return thermostat_time_progs
-        return dict()
+        return {}
 
     def set_holiday(
         self,
         gw_id: str,
-        holiday_end_date: Optional[str],
+        holiday_end_date: str | None,
     ) -> None:
         """Set holidays"""
         self._post(
@@ -465,10 +465,10 @@ class AristonAPI:
         self,
         method: str,
         path: str,
-        params: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         body: Any = None,
         is_retry: bool = False,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Request with requests"""
         headers: dict[str, Any] = {
             "User-Agent": self.__user_agent,
@@ -514,7 +514,7 @@ class AristonAPI:
         """POST request"""
         return self.__request("POST", path, None, body)
 
-    def _get(self, path: str, params: Optional[dict[str, Any]] = None) -> Any:
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """GET request"""
         return self.__request("GET", path, params, None)
 
@@ -544,7 +544,7 @@ class AristonAPI:
         )
         if detailed_devices is not None:
             return list(detailed_devices)
-        return list()
+        return []
 
     async def async_get_detailed_velis_devices(self) -> list[Any]:
         """Async get detailed cloud devices"""
@@ -553,7 +553,7 @@ class AristonAPI:
         )
         if detailed_velis_devices is not None:
             return list(detailed_velis_devices)
-        return list()
+        return []
 
     async def async_get_devices(self) -> list[Any]:
         """Async get cloud devices"""
@@ -562,11 +562,9 @@ class AristonAPI:
         )
         if devices is not None:
             return list(devices)
-        return list()
+        return []
 
-    async def async_get_features_for_device(
-        self, gw_id: str
-    ) -> Optional[dict[str, Any]]:
+    async def async_get_features_for_device(self, gw_id: str) -> dict[str, Any] | None:
         """Async get features for the device"""
         return await self._async_get(
             f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_PLANTS}/{gw_id}/features"
@@ -579,7 +577,7 @@ class AristonAPI:
         )
         if energy_account is not None:
             return energy_account
-        return dict()
+        return {}
 
     async def async_get_consumptions_sequences(
         self, gw_id: str, usages: str
@@ -590,7 +588,7 @@ class AristonAPI:
         )
         if consumptions_sequences is not None:
             return list(consumptions_sequences)
-        return list()
+        return []
 
     async def async_get_consumptions_settings(self, gw_id: str) -> dict[str, Any]:
         """Async get consumption settings"""
@@ -600,7 +598,7 @@ class AristonAPI:
         )
         if consumptions_settings is not None:
             return consumptions_settings
-        return dict()
+        return {}
 
     async def async_set_consumptions_settings(
         self,
@@ -628,7 +626,7 @@ class AristonAPI:
         )
         if properties is not None:
             return properties
-        return dict()
+        return {}
 
     async def async_get_bsb_plant_data(self, gw_id: str) -> dict[str, Any]:
         """Get BSB plant data."""
@@ -637,7 +635,7 @@ class AristonAPI:
         )
         if data is not None:
             return data
-        return dict()
+        return {}
 
     async def async_get_velis_plant_data(
         self, plant_data: PlantData, gw_id: str
@@ -648,7 +646,7 @@ class AristonAPI:
         )
         if med_plant_data is not None:
             return med_plant_data
-        return dict()
+        return {}
 
     async def async_get_velis_plant_settings(
         self, plant_data: PlantData, gw_id: str
@@ -659,7 +657,7 @@ class AristonAPI:
         )
         if med_plant_settings is not None:
             return med_plant_settings
-        return dict()
+        return {}
 
     async def async_get_menu_items(self, gw_id: str) -> list[dict[str, Any]]:
         """Async get menu items"""
@@ -668,7 +666,7 @@ class AristonAPI:
         )
         if items is not None:
             return items
-        return list()
+        return []
 
     async def async_set_property(
         self,
@@ -782,8 +780,8 @@ class AristonAPI:
         gw_id: str,
         comfort: float,
         reduced: float,
-        old_comfort: Optional[float],
-        old_reduced: Optional[float],
+        old_comfort: float | None,
+        old_reduced: float | None,
     ) -> None:
         """Async set Velis Lydos temperature"""
         await self._async_post(
@@ -805,8 +803,8 @@ class AristonAPI:
         gw_id: str,
         comfort: float,
         reduced: float,
-        old_comfort: Optional[float],
-        old_reduced: Optional[float],
+        old_comfort: float | None,
+        old_reduced: float | None,
     ) -> None:
         """Async set Bsb temperature"""
         await self._async_post(
@@ -829,8 +827,8 @@ class AristonAPI:
         zone: int,
         comfort: float,
         reduced: float,
-        old_comfort: Optional[float],
-        old_reduced: Optional[float],
+        old_comfort: float | None,
+        old_reduced: float | None,
         is_cooling: bool,
     ) -> None:
         """Async set Bsb zone temperature"""
@@ -894,7 +892,7 @@ class AristonAPI:
 
     async def async_get_thermostat_time_progs(
         self, gw_id: str, zone: int, umsys: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Async get thermostat time programs"""
         return await self._async_get(
             f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_TIME_PROGS}/{gw_id}/ChZn{zone}?umsys={umsys}",
@@ -903,7 +901,7 @@ class AristonAPI:
     async def async_set_holiday(
         self,
         gw_id: str,
-        holiday_end_date: Optional[str],
+        holiday_end_date: str | None,
     ) -> None:
         """Async set holidays"""
 
@@ -927,10 +925,10 @@ class AristonAPI:
         self,
         method: str,
         path: str,
-        params: Optional[dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         body: Any = None,
         is_retry: bool = False,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Async request with aiohttp"""
         headers: dict[str, Any] = {
             "User-Agent": self.__user_agent,
@@ -989,8 +987,6 @@ class AristonAPI:
         """Async POST request"""
         return await self.__async_request("POST", path, None, body)
 
-    async def _async_get(
-        self, path: str, params: Optional[dict[str, Any]] = None
-    ) -> Any:
+    async def _async_get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """Async GET request"""
         return await self.__async_request("GET", path, params, None)

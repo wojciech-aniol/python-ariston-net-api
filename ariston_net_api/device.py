@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from .base_device import AristonBaseDevice
 
@@ -40,13 +39,13 @@ class AristonDevice(AristonBaseDevice, ABC):
 
     @property
     @abstractmethod
-    def water_heater_target_temperature(self) -> Optional[float]:
+    def water_heater_target_temperature(self) -> float | None:
         """Abstract method for get water heater target temperature"""
         raise NotImplementedError
 
     @property
     @abstractmethod
-    def water_heater_maximum_temperature(self) -> Optional[float]:
+    def water_heater_maximum_temperature(self) -> float | None:
         """Abstract method for get water heater maximum temperature"""
         raise NotImplementedError
 

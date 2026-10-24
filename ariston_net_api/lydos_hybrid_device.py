@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from .const import (
     ConsumptionTimeInterval,
     ConsumptionType,
+    LydosDeviceProperties,
     LydosPlantMode,
     PlantData,
     SeDeviceSettings,
-    LydosDeviceProperties,
 )
 from .evo_lydos_device import AristonEvoLydosDevice
 
@@ -46,14 +45,14 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
         return SeDeviceSettings.SE_MAX_SETPOINT_TEMPERATURE
 
     @property
-    def water_heater_maximum_setpoint_temperature_minimum(self) -> Optional[float]:
+    def water_heater_maximum_setpoint_temperature_minimum(self) -> float | None:
         """Get water heater maximum setpoint temperature minimum"""
         return self.plant_settings.get(
             SeDeviceSettings.SE_MAX_SETPOINT_TEMPERATURE_MIN, None
         )
 
     @property
-    def water_heater_maximum_setpoint_temperature_maximum(self) -> Optional[float]:
+    def water_heater_maximum_setpoint_temperature_maximum(self) -> float | None:
         """Get water heater maximum setpoint maximum temperature"""
         return self.plant_settings.get(
             SeDeviceSettings.SE_MAX_SETPOINT_TEMPERATURE_MAX, None
