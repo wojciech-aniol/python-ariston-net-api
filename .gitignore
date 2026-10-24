@@ -129,3 +129,6 @@ dmypy.json
 .pyre/
 
 .vscode/
+# Claude Code, personal
+CLAUDE.local.md
+.claude/settings.local.json
