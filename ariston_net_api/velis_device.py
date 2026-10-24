@@ -1,14 +1,15 @@
 """Velis device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from .ariston_api import AristonAPI
 from .const import VelisDeviceProperties
-from .velis_base_device import AristonVelisBaseDevice
 from .device import AristonDevice
+from .velis_base_device import AristonVelisBaseDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class AristonVelisDevice(AristonDevice, AristonVelisBaseDevice, ABC):
         attributes: dict[str, Any],
     ) -> None:
         super().__init__(api, attributes)
-        self.plant_settings: dict[str, Any] = dict()
+        self.plant_settings: dict[str, Any] = {}
 
     @property
     @abstractmethod
@@ -35,12 +36,12 @@ class AristonVelisDevice(AristonDevice, AristonVelisBaseDevice, ABC):
         """Final string to get max setpoint temperature"""
 
     @property
-    def water_anti_leg_value(self) -> Optional[bool]:
+    def water_anti_leg_value(self) -> bool | None:
         """Get water heater anti-legionella value"""
         return self.plant_settings.get(self.anti_legionella_on_off, None)
 
     @property
-    def proc_req_temp_value(self) -> Optional[float]:
+    def proc_req_temp_value(self) -> float | None:
         """Get process requested tempereature value"""
         return self.data.get(VelisDeviceProperties.PROC_REQ_TEMP, None)
 
@@ -90,18 +91,18 @@ class AristonVelisDevice(AristonDevice, AristonVelisBaseDevice, ABC):
 
     @property
     @abstractmethod
-    def water_heater_maximum_setpoint_temperature_minimum(self) -> Optional[float]:
+    def water_heater_maximum_setpoint_temperature_minimum(self) -> float | None:
         """Get water heater maximum setpoint temperature minimum"""
         raise NotImplementedError
 
     @property
     @abstractmethod
-    def water_heater_maximum_setpoint_temperature_maximum(self) -> Optional[float]:
+    def water_heater_maximum_setpoint_temperature_maximum(self) -> float | None:
         """Get water heater maximum setpoint maximum temperature"""
         raise NotImplementedError
 
     @property
-    def water_heater_maximum_setpoint_temperature(self) -> Optional[float]:
+    def water_heater_maximum_setpoint_temperature(self) -> float | None:
         """Get water heater maximum setpoint temperature value"""
         return self.plant_settings.get(self.max_setpoint_temp, None)
 
@@ -111,7 +112,7 @@ class AristonVelisDevice(AristonDevice, AristonVelisBaseDevice, ABC):
         return 40.0
 
     @property
-    def water_heater_maximum_temperature(self) -> Optional[float]:
+    def water_heater_maximum_temperature(self) -> float | None:
         """Get water heater maximum temperature"""
         return self.water_heater_maximum_setpoint_temperature
 

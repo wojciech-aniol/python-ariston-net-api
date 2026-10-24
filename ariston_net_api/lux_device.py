@@ -1,14 +1,14 @@
 """Lux device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from .const import (
-    LuxPlantMode,
     EvoDeviceProperties,
     EvoLydosDeviceProperties,
-    WaterHeaterMode
+    LuxPlantMode,
+    WaterHeaterMode,
 )
 from .evo_device import AristonEvoDevice
 
@@ -34,9 +34,9 @@ class AristonLuxDevice(AristonEvoDevice):
         self.data[EvoDeviceProperties.MODE] = LuxPlantMode[operation_mode].value
 
     @property
-    def water_heater_target_temperature(self) -> Optional[float]:
+    def water_heater_target_temperature(self) -> float | None:
         """Get water heater target temperature"""
-        if self.data.get(EvoDeviceProperties.MODE) == LuxPlantMode.BOOST:
+        if self.data.get(EvoDeviceProperties.MODE) == LuxPlantMode.BOOST.value:
             return self.water_heater_maximum_setpoint_temperature_maximum
         else:
             return self.data.get(EvoLydosDeviceProperties.REQ_TEMP, None)

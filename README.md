@@ -1,6 +1,14 @@
-[![CodeQL](https://github.com/fustom/python-ariston-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/fustom/python-ariston-api/actions/workflows/codeql.yml) [![Upload Python Package](https://github.com/fustom/python-ariston-api/actions/workflows/python-publish.yml/badge.svg)](https://github.com/fustom/python-ariston-api/actions/workflows/python-publish.yml)
+[![Tests](https://github.com/wojciech-aniol/python-ariston-net-api/actions/workflows/tests.yml/badge.svg)](https://github.com/wojciech-aniol/python-ariston-net-api/actions/workflows/tests.yml)
 
-# python-ariston-api
+# python-ariston-net-api
+A maintained fork of [fustom/python-ariston-api](https://github.com/fustom/python-ariston-api)
+for the [Ariston NET](https://github.com/wojciech-aniol/ariston-remotethermo-home-assistant-v3)
+Home Assistant integration. The package is `ariston-net-api` and the module is `ariston_net_api`,
+so it can live next to fustom's `ariston` package:
+```python3
+from ariston_net_api import Ariston
+```
+
 A Python module for controlling Ariston devices with cloud polling.
 The following devices are currently supported:
 - Ariston Alteas One 24
@@ -15,7 +23,7 @@ The following devices are currently supported:
 ## Installation
 Use pip3 to install the latest version of this module.
 ```
-pip3 install ariston
+pip3 install ariston-net-api
 ```
 
 ## The easy way (recommended for testing the module)
@@ -24,7 +32,7 @@ First, open Python 3 and import ariston module.
 python3
 ```
 ```python3
-import ariston
+import ariston_net_api as ariston
 ```
 ### Syncronous
 Discover devices if you dont know your gateway id. You can skip this step.
@@ -33,7 +41,7 @@ raw_devices = ariston.discover("username", "password")
 ```
 For example the gateway id for your first device.
 ```python3
- raw_devices[0]['gw']
+raw_devices[0]["gw"]
 ```
 Get your device
 ```python3
@@ -43,7 +51,9 @@ device = ariston.hello("username", "password", "gateway", is_metric, "location")
 ### Asyncronous
 ```python3
 raw_devices = await ariston.async_discover("username", "password")
-device = await ariston.async_hello("username", "password", "gateway", is_metric, "location")
+device = await ariston.async_hello(
+    "username", "password", "gateway", is_metric, "location"
+)
 ```
 [Go use your device section](#use-your-device)
 ## The ariston class way (recommended for integrate the module)
@@ -52,7 +62,7 @@ First, open Python 3 and import Ariston class from this module.
 python3
 ```
 ```python3
-from ariston import Ariston
+from ariston_net_api import Ariston
 ```
 Create a new Ariston instance
 ```python3

@@ -1,14 +1,14 @@
 """Evo device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from .const import (
-    VelisPlantMode,
     EvoOneDeviceProperties,
     PlantData,
+    VelisPlantMode,
     WaterHeaterMode,
 )
 from .velis_base_device import AristonVelisBaseDevice
@@ -35,22 +35,22 @@ class AristonEvoOneDevice(AristonVelisBaseDevice):
         return VelisPlantMode
 
     @property
-    def water_heater_current_temperature(self) -> Optional[float]:
+    def water_heater_current_temperature(self) -> float | None:
         """Get water heater current temperature"""
         return self.data.get(EvoOneDeviceProperties.TEMP, None)
 
     @property
-    def av_shw_value(self) -> Optional[int]:
+    def av_shw_value(self) -> int | None:
         """Get average showers value"""
         return self.data.get(EvoOneDeviceProperties.AV_SHW, None)
 
     @property
-    def water_heater_eco_value(self) -> Optional[int]:
+    def water_heater_eco_value(self) -> int | None:
         """Get water heater eco value"""
         return self.data.get(EvoOneDeviceProperties.ECO, None)
 
     @property
-    def rm_tm_value(self) -> Optional[str]:
+    def rm_tm_value(self) -> str | None:
         """Get remaining time value"""
         return self.data.get(EvoOneDeviceProperties.RM_TM, None)
 
@@ -84,17 +84,17 @@ class AristonEvoOneDevice(AristonVelisBaseDevice):
         self.data[EvoOneDeviceProperties.MODE] = VelisPlantMode[operation_mode].value
 
     @property
-    def is_heating(self) -> Optional[bool]:
+    def is_heating(self) -> bool | None:
         """Get is the water heater heating"""
         return self.data.get(EvoOneDeviceProperties.STATE, None)
 
     @property
-    def max_req_shower(self) -> Optional[str]:
+    def max_req_shower(self) -> str | None:
         """Get maximum requestable shower"""
         return self.data.get(EvoOneDeviceProperties.MAX_REQ_SHW, None)
 
     @property
-    def req_shower(self) -> Optional[str]:
+    def req_shower(self) -> str | None:
         """Get requested shower"""
         return self.data.get(EvoOneDeviceProperties.REQ_SHW, None)
 

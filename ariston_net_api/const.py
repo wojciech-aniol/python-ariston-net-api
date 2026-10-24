@@ -1,7 +1,7 @@
 """Constants for ariston module"""
 
 from enum import Enum, IntEnum, StrEnum, unique
-from typing import Final, Any
+from typing import Any, Final
 
 ARISTON_API_URL: Final[str] = "https://www.ariston-net.remotethermo.com/api/v2/"
 ARISTON_LOGIN: Final[str] = "accounts/login"
