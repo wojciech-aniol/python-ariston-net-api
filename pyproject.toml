@@ -3,20 +3,23 @@ build-backend = "flit_core.buildapi"
 requires = ["flit_core >=3.2,<4"]
 
 [project]
-name = "ariston"
+name = "ariston-net-api"
 readme = "README.md"
 authors = [
     { name = "Tamás Füstös", email = "fustom@gmail.com" }
+]
+maintainers = [
+    { name = "Wojciech Anioł" }
 ]
 dependencies = [
     "aiohttp",
     "requests"
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.13"
 license = { file = "LICENSE" }
-version = "0.19.9"
+version = "0.20.0"
 dynamic = ['description']
 
 [project.urls]
-Repository = "https://github.com/fustom/python-ariston-api.git"
-Issues = "https://github.com/fustom/python-ariston-api/issues"
+Repository = "https://github.com/wojciech-aniol/python-ariston-net-api.git"
+Issues = "https://github.com/wojciech-aniol/python-ariston-net-api/issues"
