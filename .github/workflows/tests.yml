@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install ruff
+        run: pip install "$(grep -o 'ruff==[0-9.]*' pyproject.toml)"
+      - name: Lint
+        run: ruff check --output-format=github .
+      - name: Check format
+        run: ruff format --check .
+
+  pytest:
+    runs-on: "ubuntu-latest"
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the package
+        run: pip install -e ".[test]"
+      - name: Run tests
+        run: pytest -q

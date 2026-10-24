@@ -23,3 +23,17 @@ dynamic = ['description']
 [project.urls]
 Repository = "https://github.com/wojciech-aniol/python-ariston-net-api.git"
 Issues = "https://github.com/wojciech-aniol/python-ariston-net-api/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest==9.0.3",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.17.2",
+]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
