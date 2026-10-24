@@ -1,4 +1,5 @@
 """Lux device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
@@ -8,7 +9,7 @@ from .const import (
     LuxPlantMode,
     EvoDeviceProperties,
     EvoLydosDeviceProperties,
-    WaterHeaterMode
+    WaterHeaterMode,
 )
 from .evo_device import AristonEvoDevice
 

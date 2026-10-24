@@ -1,4 +1,5 @@
 """Lux2 device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
@@ -7,6 +8,7 @@ from .const import EvoDeviceProperties
 from .evo_device import AristonEvoDevice
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class AristonLux2Device(AristonEvoDevice):
     """Class representing a physical device, it's state and properties."""

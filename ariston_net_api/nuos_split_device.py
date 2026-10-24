@@ -1,4 +1,5 @@
 """Nuos split device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
@@ -124,7 +125,13 @@ class AristonNuosSplitDevice(AristonVelisDevice):
 
     def _set_water_heater_temperature(self, temperature: float, reduced: float):
         """Set water heater temperature"""
-        self.api.set_nuos_temperature(self.gw, temperature, reduced, self.water_heater_target_temperature, self.water_heater_reduced_temperature)
+        self.api.set_nuos_temperature(
+            self.gw,
+            temperature,
+            reduced,
+            self.water_heater_target_temperature,
+            self.water_heater_reduced_temperature,
+        )
         self.data[NuosSplitProperties.PROC_REQ_TEMP] = temperature
         self.data[NuosSplitProperties.REDUCED_TEMP] = reduced
 
@@ -141,7 +148,13 @@ class AristonNuosSplitDevice(AristonVelisDevice):
         self, temperature: float, reduced: float
     ):
         """Async set water heater temperature"""
-        await self.api.async_set_nuos_temperature(self.gw, temperature, reduced, self.water_heater_target_temperature, self.water_heater_reduced_temperature)
+        await self.api.async_set_nuos_temperature(
+            self.gw,
+            temperature,
+            reduced,
+            self.water_heater_target_temperature,
+            self.water_heater_reduced_temperature,
+        )
         self.data[NuosSplitProperties.PROC_REQ_TEMP] = temperature
         self.data[NuosSplitProperties.REDUCED_TEMP] = reduced
 
@@ -197,9 +210,9 @@ class AristonNuosSplitDevice(AristonVelisDevice):
             min_setpoint_temp,
             self.plant_settings[SlpDeviceSettings.SLP_MIN_SETPOINT_TEMPERATURE],
         )
-        self.plant_settings[
-            SlpDeviceSettings.SLP_MIN_SETPOINT_TEMPERATURE
-        ] = min_setpoint_temp
+        self.plant_settings[SlpDeviceSettings.SLP_MIN_SETPOINT_TEMPERATURE] = (
+            min_setpoint_temp
+        )
 
     async def async_set_min_setpoint_temp(self, min_setpoint_temp: float):
         """Async set water heater minimum setpoint temperature"""
@@ -210,9 +223,9 @@ class AristonNuosSplitDevice(AristonVelisDevice):
             min_setpoint_temp,
             self.plant_settings[SlpDeviceSettings.SLP_MIN_SETPOINT_TEMPERATURE],
         )
-        self.plant_settings[
-            SlpDeviceSettings.SLP_MIN_SETPOINT_TEMPERATURE
-        ] = min_setpoint_temp
+        self.plant_settings[SlpDeviceSettings.SLP_MIN_SETPOINT_TEMPERATURE] = (
+            min_setpoint_temp
+        )
 
     def set_preheating(self, preheating: bool):
         """Set water heater preheating"""

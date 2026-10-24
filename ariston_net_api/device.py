@@ -1,4 +1,5 @@
 """Device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging

@@ -41,7 +41,7 @@ raw_devices = ariston.discover("username", "password")
 ```
 For example the gateway id for your first device.
 ```python3
- raw_devices[0]['gw']
+raw_devices[0]["gw"]
 ```
 Get your device
 ```python3
@@ -51,7 +51,9 @@ device = ariston.hello("username", "password", "gateway", is_metric, "location")
 ### Asyncronous
 ```python3
 raw_devices = await ariston.async_discover("username", "password")
-device = await ariston.async_hello("username", "password", "gateway", is_metric, "location")
+device = await ariston.async_hello(
+    "username", "password", "gateway", is_metric, "location"
+)
 ```
 [Go use your device section](#use-your-device)
 ## The ariston class way (recommended for integrate the module)

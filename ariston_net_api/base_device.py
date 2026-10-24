@@ -1,4 +1,5 @@
 """Device class for Ariston module."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -95,7 +96,7 @@ class AristonBaseDevice(ABC):
         return self.attributes.get(DeviceAttribute.NAME, None)
 
     @property
-    def has_dhw(self)-> Optional[bool]:
+    def has_dhw(self) -> Optional[bool]:
         """Get device has domestic hot water"""
         return self.custom_features.get(CustomDeviceFeatures.HAS_DHW, None)
 
@@ -258,12 +259,17 @@ class AristonBaseDevice(ABC):
     ) -> Any:
         """Get last value for consumption sequence"""
         for sequence in self.consumptions_sequences:
-            if sequence["k"] == consumption_type.value and sequence["p"] == time_interval.value:
+            if (
+                sequence["k"] == consumption_type.value
+                and sequence["p"] == time_interval.value
+            ):
                 return sequence["v"][-1]
 
         return None
 
-    def _update_energy(self, old_consumptions_sequences: Optional[list[dict[str, Any]]]) -> None:
+    def _update_energy(
+        self, old_consumptions_sequences: Optional[list[dict[str, Any]]]
+    ) -> None:
         """Update the device energy settings"""
         if (
             self.custom_features.get(

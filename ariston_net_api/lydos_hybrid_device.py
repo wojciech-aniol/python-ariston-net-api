@@ -1,4 +1,5 @@
 """Lydos hybrid device class for Ariston module."""
+
 from __future__ import annotations
 
 import logging
@@ -84,12 +85,16 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
     @property
     def anti_cooling_temperature_maximum(self) -> int:
         """Get anti cooling temperature maximum"""
-        return self.plant_settings.get(SeDeviceSettings.SE_ANTI_COOLING_TEMPERATURE_MAX, 0)
+        return self.plant_settings.get(
+            SeDeviceSettings.SE_ANTI_COOLING_TEMPERATURE_MAX, 0
+        )
 
     @property
     def anti_cooling_temperature_minimum(self) -> int:
         """Get anti cooling temperature minimum"""
-        return self.plant_settings.get(SeDeviceSettings.SE_ANTI_COOLING_TEMPERATURE_MIN, 0)
+        return self.plant_settings.get(
+            SeDeviceSettings.SE_ANTI_COOLING_TEMPERATURE_MIN, 0
+        )
 
     @property
     def night_mode_value(self) -> int:
@@ -104,12 +109,16 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
     @property
     def night_mode_begin_max_as_minutes_value(self) -> int:
         """Get night mode begin max as minutes value"""
-        return self.plant_settings.get(SeDeviceSettings.SE_NIGHT_BEGIN_MAX_AS_MINUTES, 0)
+        return self.plant_settings.get(
+            SeDeviceSettings.SE_NIGHT_BEGIN_MAX_AS_MINUTES, 0
+        )
 
     @property
     def night_mode_begin_min_as_minutes_value(self) -> int:
         """Get night mode begin min as minutes value"""
-        return self.plant_settings.get(SeDeviceSettings.SE_NIGHT_BEGIN_MIN_AS_MINUTES, 0)
+        return self.plant_settings.get(
+            SeDeviceSettings.SE_NIGHT_BEGIN_MIN_AS_MINUTES, 0
+        )
 
     @property
     def night_mode_end_as_minutes_value(self) -> int:
@@ -234,7 +243,9 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
         )
         self.plant_settings[SeDeviceSettings.SE_NIGHT_MODE_ON_OFF] = night_mode
 
-    def set_night_mode_begin_as_minutes_value(self, night_mode_begin_as_minutes: int) -> None:
+    def set_night_mode_begin_as_minutes_value(
+        self, night_mode_begin_as_minutes: int
+    ) -> None:
         """Set night mode begin as minutes value"""
         self.api.set_velis_plant_setting(
             self.plant_data,
@@ -243,9 +254,13 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
             night_mode_begin_as_minutes,
             self.night_mode_begin_as_minutes_value,
         )
-        self.plant_settings[SeDeviceSettings.SE_NIGHT_BEGIN_AS_MINUTES] = night_mode_begin_as_minutes
+        self.plant_settings[SeDeviceSettings.SE_NIGHT_BEGIN_AS_MINUTES] = (
+            night_mode_begin_as_minutes
+        )
 
-    async def async_set_night_mode_begin_as_minutes_value(self, night_mode_begin_as_minutes: int) -> None:
+    async def async_set_night_mode_begin_as_minutes_value(
+        self, night_mode_begin_as_minutes: int
+    ) -> None:
         """Async set night mode begin as minutes value"""
         await self.api.async_set_velis_plant_setting(
             self.plant_data,
@@ -254,9 +269,13 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
             night_mode_begin_as_minutes,
             self.night_mode_begin_as_minutes_value,
         )
-        self.plant_settings[SeDeviceSettings.SE_NIGHT_BEGIN_AS_MINUTES] = night_mode_begin_as_minutes
+        self.plant_settings[SeDeviceSettings.SE_NIGHT_BEGIN_AS_MINUTES] = (
+            night_mode_begin_as_minutes
+        )
 
-    def set_night_mode_end_as_minutes_value(self, night_mode_end_as_minutes: int) -> None:
+    def set_night_mode_end_as_minutes_value(
+        self, night_mode_end_as_minutes: int
+    ) -> None:
         """Set night mode end as minutes value"""
         self.api.set_velis_plant_setting(
             self.plant_data,
@@ -265,9 +284,13 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
             night_mode_end_as_minutes,
             self.night_mode_end_as_minutes_value,
         )
-        self.plant_settings[SeDeviceSettings.SE_NIGHT_END_AS_MINUTES] = night_mode_end_as_minutes
+        self.plant_settings[SeDeviceSettings.SE_NIGHT_END_AS_MINUTES] = (
+            night_mode_end_as_minutes
+        )
 
-    async def async_set_night_mode_end_as_minutes_value(self, night_mode_end_as_minutes: int) -> None:
+    async def async_set_night_mode_end_as_minutes_value(
+        self, night_mode_end_as_minutes: int
+    ) -> None:
         """Async set night mode end as minutes value"""
         await self.api.async_set_velis_plant_setting(
             self.plant_data,
@@ -276,4 +299,6 @@ class AristonLydosHybridDevice(AristonEvoLydosDevice):
             night_mode_end_as_minutes,
             self.night_mode_end_as_minutes_value,
         )
-        self.plant_settings[SeDeviceSettings.SE_NIGHT_END_AS_MINUTES] = night_mode_end_as_minutes
+        self.plant_settings[SeDeviceSettings.SE_NIGHT_END_AS_MINUTES] = (
+            night_mode_end_as_minutes
+        )
