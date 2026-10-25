@@ -1,11 +1,12 @@
 """Tests for the package entry points."""
 
+import logging
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-from ariston_net_api import AristonBsbDevice, AristonLuxDevice, _get_device
+from ariston_net_api import Ariston, AristonBsbDevice, AristonLuxDevice, _get_device
 from ariston_net_api.const import (
     DeviceAttribute,
     SystemType,
@@ -45,6 +46,51 @@ def test_get_device(
     assert device.attributes == cloud_devices[1]
 
 
-def test_get_device_unknown_gateway(api: MagicMock) -> None:
-    """An unknown gateway gives no device."""
-    assert _get_device([], api, GATEWAY) is None
+@pytest.mark.parametrize(
+    ("cloud_devices", "message"),
+    [
+        ([], f"No device {GATEWAY} found."),
+        (
+            [
+                {
+                    DeviceAttribute.GW: GATEWAY,
+                    DeviceAttribute.SYS: SystemType.VELIS.value,
+                    VelisDeviceAttribute.WHE_TYPE: 99,
+                }
+            ],
+            "Unsupported whe type 99",
+        ),
+        (
+            [
+                {
+                    DeviceAttribute.GW: GATEWAY,
+                    DeviceAttribute.SYS: SystemType.UNKNOWN.value,
+                }
+            ],
+            "Unsupported system type -1",
+        ),
+    ],
+)
+def test_get_device_none(
+    api: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    cloud_devices: list[dict[str, Any]],
+    message: str,
+) -> None:
+    """No device gives an error log without an empty traceback."""
+    assert _get_device(cloud_devices, api, GATEWAY) is None
+
+    assert caplog.record_tuples == [("ariston_net_api", logging.ERROR, message)]
+    assert "NoneType" not in caplog.text
+
+
+async def test_not_connected(caplog: pytest.LogCaptureFixture) -> None:
+    """Calls before async_connect log an error without an empty traceback."""
+    ariston = Ariston()
+
+    assert await ariston.async_discover() == []
+    assert await ariston.async_hello(GATEWAY) is None
+
+    record = ("ariston_net_api", logging.ERROR, "Call async_connect() first")
+    assert caplog.record_tuples == [record, record]
+    assert "NoneType" not in caplog.text

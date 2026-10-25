@@ -82,6 +82,10 @@ class AristonBsbDevice(AristonDevice):
         )
         return BsbZoneMode.UNDEFINED if value is None else BsbZoneMode(value)
 
+    def get_zone_heat_request_value(self, zone: int) -> bool | None:
+        """Get zone heat or cool request value"""
+        return self.get_zone(zone).get(BsbZoneProperties.HEAT_OR_COOL_REQ)
+
     def get_zone_mode_options(self, zone: int) -> list[int]:
         """Get zone mode on options"""
         return (
@@ -133,6 +137,11 @@ class AristonBsbDevice(AristonDevice):
     def is_flame_on_value(self) -> bool:
         """Get is flame on value"""
         return self.data.get(BsbDeviceProperties.FLAME, False)
+
+    @property
+    def is_heating_pump_on_value(self) -> bool | None:
+        """Get is heating pump on value"""
+        return self.data.get(BsbDeviceProperties.HP_ON)
 
     @property
     def water_heater_current_temperature(self) -> float | None:
@@ -262,9 +271,15 @@ class AristonBsbDevice(AristonDevice):
         """Get zone reduced temp value"""
         return self.get_zone_ch_red_temp(zone).get(PropertyType.VALUE, 0)
 
-    def get_measured_temp_value(self, zone: int) -> int:
+    def get_measured_temp_value(self, zone: int) -> float | None:
         """Get zone measured temp value"""
-        return self.get_zone(zone).get(BsbZoneProperties.ROOM_TEMP, 0)
+        zone_data = self.get_zone(zone)
+        # roomTemp is not a real reading without a working sensor.
+        if zone_data.get(BsbZoneProperties.HAS_ROOM_SENS) is False or zone_data.get(
+            BsbZoneProperties.ROOM_TEMP_ERROR
+        ):
+            return None
+        return zone_data.get(BsbZoneProperties.ROOM_TEMP)
 
     def get_measured_temp_decimals(self, _) -> int:
         """Get zone measured temp decimals"""
