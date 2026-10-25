@@ -19,6 +19,10 @@ from .const import (
     GasEnergyUnit,
     GasType,
     MenuItemNames,
+    MeteringData,
+    MeteringPeriod,
+    MeteringSeries,
+    MeteringTab,
     PlantMode,
     PropertyType,
     ThermostatProperties,
@@ -46,6 +50,7 @@ class AristonGalevoDevice(AristonDevice):
         self.consumptions_settings: dict[str, Any] = {}
         self.energy_account: dict[str, Any] = {}
         self.menu_items: list[dict[str, Any]] = []
+        self.metering_data: dict[str, Any] = {}
 
     @property
     def consumption_type(self) -> str:
@@ -1048,3 +1053,70 @@ class AristonGalevoDevice(AristonDevice):
 
         if not self.energy_account.get("LastMonth"):
             self.energy_account = self._calc_energy_account()
+
+    @property
+    def _metering_has_cooling(self) -> bool:
+        """Has cooling, as the web app sends it for metering"""
+        return (
+            self.plant_mode_options is not None
+            and self.is_plant_mode_options_contains_cooling
+        )
+
+    def _set_metering_data(self, data: dict[str, Any]) -> None:
+        """Keep the not rounded kWh view only"""
+        self.metering_data = {
+            key: data[key]
+            for key in (
+                MeteringData.OLDEST_MONTH,
+                MeteringData.IS_INTENSIVE_LOGS_ACTIVE,
+                MeteringData.AS_KWH_RAW,
+            )
+            if key in data
+        }
+
+    def update_metering(self) -> None:
+        """Update the metering data (heat produced) from the web app"""
+        if self.has_metering is not True:
+            return
+        self._set_metering_data(
+            self.api.get_metering_data(
+                self.gw, self.features, self._metering_has_cooling
+            )
+        )
+
+    async def async_update_metering(self) -> None:
+        """Async update the metering data (heat produced) from the web app"""
+        if self.has_metering is not True:
+            return
+        self._set_metering_data(
+            await self.api.async_get_metering_data(
+                self.gw, self.features, self._metering_has_cooling
+            )
+        )
+
+    @property
+    def is_metering_intensive_logs_active(self) -> bool | None:
+        """Is intensive logging on. The web app then shows metering as off."""
+        return self.metering_data.get(MeteringData.IS_INTENSIVE_LOGS_ACTIVE)
+
+    def get_metering_total(
+        self, tab: MeteringTab, series: MeteringSeries, period: MeteringPeriod
+    ) -> float | None:
+        """Get the sum of a metering row in kWh, None when there is no such row"""
+        rows = self.metering_data.get(MeteringData.AS_KWH_RAW, {}).get(
+            MeteringData.HISTOGRAM_DATA, []
+        )
+        for row in rows:
+            if (
+                row.get(MeteringData.TAB) == tab
+                and row.get(MeteringData.SERIES) == series
+                and row.get(MeteringData.PERIOD) == period
+            ):
+                return sum(
+                    (
+                        item.get(MeteringData.Y) or 0.0
+                        for item in row.get(MeteringData.ITEMS, [])
+                    ),
+                    0.0,
+                )
+        return None

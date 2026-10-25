@@ -142,3 +142,33 @@ Async
 ```python3
 await device.async_update_energy()
 ```
+### Get heat produced
+The API gives only the electricity a device used. The heat a heat pump produced is only on the
+metering page of the web app, so this update logs in to the web app (same login and password)
+every time. It works for GALEVO devices whose features have `hasMetering`; other devices send no
+request.
+
+Sync
+```python3
+device.update_metering()
+```
+Async
+```python3
+await device.async_update_metering()
+```
+Then read a total in kWh (`None` when the cloud has no such data):
+```python3
+from ariston_net_api.const import MeteringPeriod, MeteringSeries, MeteringTab
+
+device.get_metering_total(
+    MeteringTab.PRODUCED_ENERGY, MeteringSeries.HEATING, MeteringPeriod.CURRENT_DAY
+)
+```
+- Tabs: `PRODUCED_ENERGY`, `CONSUMED_ELECTRICITY`. Series: `HEATING`, `DHW`, `COOLING`.
+- Periods: `CURRENT_DAY` and `PREVIOUS_DAY` (2 h bins), `CURRENT_MONTH` and `PREVIOUS_MONTH`
+  (days), `CURRENT_YEAR` and `PREVIOUS_YEAR` (months).
+- Poll it rarely, for example once an hour: one update is three HTTP requests (login, its
+  redirect, data) and about 72 KB, and the data comes in 2 h bins.
+- The values are Ariston's estimates, not a heat meter.
+- When `device.is_metering_intensive_logs_active` is true, the web app shows metering as off.
+- This is the web app's page backend, not an API for apps, so it may change without notice.

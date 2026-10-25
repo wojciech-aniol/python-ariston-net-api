@@ -17,6 +17,14 @@ ARISTON_TIME_PROGS: Final[str] = "timeProgs"
 ARISTON_BUS_ERRORS: Final[str] = "busErrors"
 ARISTON_MENU_ITEMS: Final[str] = "menuItems"
 ARISTON_USER_AGENT: Final[str] = "RestSharp/106.11.7.0"
+# The web app (not the API) is only tested with a browser user agent.
+ARISTON_WEB_USER_AGENT: Final[str] = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+)
+ARISTON_WEB_LOGIN: Final[str] = "R2/Account/Login?returnUrl=%2FR2%2FHome"
+ARISTON_WEB_COOKIE: Final[str] = ".AspNet.ApplicationCookie"
+ARISTON_WEB_METERING: Final[str] = "R2/PlantMetering/GetData"
 
 
 class ExtendedStrEnum(StrEnum):
@@ -285,6 +293,49 @@ class ConsumptionTimeInterval(Enum):
     LAST_WEEK = 2
     LAST_MONTH = 3
     LAST_YEAR = 4
+
+
+@unique
+class MeteringTab(StrEnum):
+    """Metering tab of the web app"""
+
+    CONSUMED_ELECTRICITY = "ConsumedElectricity"
+    PRODUCED_ENERGY = "ProducedEnergy"
+
+
+@unique
+class MeteringSeries(StrEnum):
+    """Metering series of the web app"""
+
+    HEATING = "Heating"
+    DHW = "Dhw"
+    COOLING = "Cooling"
+
+
+@unique
+class MeteringPeriod(StrEnum):
+    """Metering period of the web app"""
+
+    CURRENT_DAY = "CurrentDay"
+    PREVIOUS_DAY = "PreviousDay"
+    CURRENT_MONTH = "CurrentMonth"
+    PREVIOUS_MONTH = "PreviousMonth"
+    CURRENT_YEAR = "CurrentYear"
+    PREVIOUS_YEAR = "PreviousYear"
+
+
+class MeteringData:
+    """Constants for the metering data of the web app"""
+
+    OLDEST_MONTH: Final[str] = "oldestMonth"
+    IS_INTENSIVE_LOGS_ACTIVE: Final[str] = "isIntensiveLogsActive"
+    AS_KWH_RAW: Final[str] = "asKwhRaw"
+    HISTOGRAM_DATA: Final[str] = "histogramData"
+    TAB: Final[str] = "tab"
+    PERIOD: Final[str] = "period"
+    SERIES: Final[str] = "series"
+    ITEMS: Final[str] = "items"
+    Y: Final[str] = "y"
 
 
 class DeviceAttribute:

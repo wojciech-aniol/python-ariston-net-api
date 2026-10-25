@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import re
 import time
-from typing import Any
+from typing import Any, NoReturn
+from urllib.parse import urlsplit
 
 import aiohttp
 import requests
@@ -26,6 +28,10 @@ from .const import (
     ARISTON_TIME_PROGS,
     ARISTON_USER_AGENT,
     ARISTON_VELIS,
+    ARISTON_WEB_COOKIE,
+    ARISTON_WEB_LOGIN,
+    ARISTON_WEB_METERING,
+    ARISTON_WEB_USER_AGENT,
     BsbOperativeMode,
     BsbZoneMode,
     DeviceFeatures,
@@ -47,6 +53,7 @@ _DEFAULT_BLOCK_SECONDS = 60
 # Block end (time.monotonic) per API URL and login. A new API object for
 # the same account must see it too.
 _blocked_until: dict[tuple[str, str], float] = {}
+_AJAX_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
 
 
 class ConnectionException(Exception):
@@ -70,6 +77,8 @@ class AristonAPI:
         self.__token = ""
         self.__user_agent = user_agent
         self.__account = (api_url, username)
+        url = urlsplit(api_url)
+        self.__web_url = f"{url.scheme}://{url.netloc}/"
 
     def __check_blocked(self) -> None:
         """Raise while the cloud blocks our requests"""
@@ -507,6 +516,72 @@ class AristonAPI:
         if bus_errors is not None:
             return list(bus_errors)
         return []
+
+    def get_metering_data(
+        self, gw_id: str, features: dict[str, Any], has_cooling: bool
+    ) -> dict[str, Any]:
+        """Get the metering data of the web app, with heat produced"""
+        with requests.Session() as session:
+            session.headers["User-Agent"] = ARISTON_WEB_USER_AGENT
+            self.__web_post(
+                session, f"{self.__web_url}{ARISTON_WEB_LOGIN}", self.__web_login_body()
+            )
+            if ARISTON_WEB_COOKIE not in session.cookies:
+                raise ConnectionException("Web login failed")
+            content = self.__web_post(
+                session,
+                f"{self.__web_url}{ARISTON_WEB_METERING}/{gw_id}",
+                {"features": features, "hasCooling": has_cooling},
+                _AJAX_HEADERS,
+            )
+        return self.__metering_data(content)
+
+    def __web_login_body(self) -> dict[str, Any]:
+        """Login body of the web app"""
+        return {
+            "email": self.__username,
+            "password": self.__password,
+            "rememberMe": False,
+            "language": "English_Us",
+        }
+
+    def __web_error(self, status: int, content: bytes) -> NoReturn:
+        """Raise for a web app answer that is not ok"""
+        if status == 429:
+            text = content.decode(errors="replace")
+            self.__block(text)
+            raise ConnectionException(status, text)
+        raise ConnectionException(status)
+
+    @staticmethod
+    def __metering_data(content: bytes) -> dict[str, Any]:
+        """Get the data of a metering answer"""
+        try:
+            answer = json.loads(content)
+        except ValueError as error:
+            # The web app gives its login page when the session is not valid.
+            raise ConnectionException("Metering answer is not JSON") from error
+        if not isinstance(answer, dict) or not answer.get("ok"):
+            message = answer.get("message") if isinstance(answer, dict) else None
+            raise ConnectionException("Metering failed", message)
+        data = answer.get("data")
+        return data if isinstance(data, dict) else {}
+
+    def __web_post(
+        self,
+        session: requests.Session,
+        url: str,
+        body: Any,
+        headers: dict[str, str] | None = None,
+    ) -> bytes:
+        """POST to the web app in a cookie session"""
+        self.__check_blocked()
+        # Never log the answers: the login answer is a page with personal data.
+        _LOGGER.debug("Web request POST %s", url)
+        response = session.post(url, json=body, headers=headers, timeout=30)
+        if not response.ok:
+            self.__web_error(response.status_code, response.content)
+        return response.content
 
     def __request(
         self,
@@ -970,6 +1045,45 @@ class AristonAPI:
         if bus_errors is not None:
             return list(bus_errors)
         return []
+
+    async def async_get_metering_data(
+        self, gw_id: str, features: dict[str, Any], has_cooling: bool
+    ) -> dict[str, Any]:
+        """Async get the metering data of the web app, with heat produced"""
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30),
+            headers={"User-Agent": ARISTON_WEB_USER_AGENT},
+        ) as session:
+            await self.__async_web_post(
+                session, f"{self.__web_url}{ARISTON_WEB_LOGIN}", self.__web_login_body()
+            )
+            if not any(
+                cookie.key == ARISTON_WEB_COOKIE for cookie in session.cookie_jar
+            ):
+                raise ConnectionException("Web login failed")
+            content = await self.__async_web_post(
+                session,
+                f"{self.__web_url}{ARISTON_WEB_METERING}/{gw_id}",
+                {"features": features, "hasCooling": has_cooling},
+                _AJAX_HEADERS,
+            )
+        return self.__metering_data(content)
+
+    async def __async_web_post(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        body: Any,
+        headers: dict[str, str] | None = None,
+    ) -> bytes:
+        """Async POST to the web app in a cookie session"""
+        self.__check_blocked()
+        _LOGGER.debug("Web request POST %s", url)
+        response = await session.post(url, json=body, headers=headers)
+        content = await response.read()
+        if not response.ok:
+            self.__web_error(response.status, content)
+        return content
 
     async def __async_request(
         self,
