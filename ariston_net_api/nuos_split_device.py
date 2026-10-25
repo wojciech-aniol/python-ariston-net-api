@@ -15,6 +15,13 @@ from .velis_device import AristonVelisDevice
 _LOGGER = logging.getLogger(__name__)
 
 
+def _known(temperature: float | None, name: str) -> float:
+    """Return a setpoint, or raise when the cloud has not sent it"""
+    if temperature is None:
+        raise ValueError(f"{name} temperature is unknown")
+    return temperature
+
+
 class AristonNuosSplitDevice(AristonVelisDevice):
     """Class representing a physical device, it's state and properties."""
 
@@ -136,11 +143,9 @@ class AristonNuosSplitDevice(AristonVelisDevice):
 
     def set_water_heater_temperature(self, temperature: float):
         """Set water heater temperature"""
-        if len(self.data) == 0:
+        if self.water_heater_reduced_temperature is None:
             self.update_state()
-        reduced = self.water_heater_reduced_temperature
-        if reduced is None:
-            reduced = 0
+        reduced = _known(self.water_heater_reduced_temperature, "Reduced")
         self._set_water_heater_temperature(temperature, reduced)
 
     async def _async_set_water_heater_temperature(
@@ -159,33 +164,24 @@ class AristonNuosSplitDevice(AristonVelisDevice):
 
     async def async_set_water_heater_temperature(self, temperature: float):
         """Async set water heater temperature"""
-        if len(self.data) == 0:
+        if self.water_heater_reduced_temperature is None:
             await self.async_update_state()
-        reduced = self.water_heater_reduced_temperature
-        if reduced is None:
-            reduced = 0
+        reduced = _known(self.water_heater_reduced_temperature, "Reduced")
         await self._async_set_water_heater_temperature(temperature, reduced)
-
-    def _comfort_temperature(self) -> float:
-        """Get the comfort setpoint that a reduced temperature change keeps"""
-        comfort = self.water_heater_target_temperature
-        if comfort is None:
-            raise ValueError("Comfort temperature is unknown")
-        return comfort
 
     def set_water_heater_reduced_temperature(self, temperature: float):
         """Set water heater reduced temperature"""
         if self.water_heater_target_temperature is None:
             self.update_state()
-        self._set_water_heater_temperature(self._comfort_temperature(), temperature)
+        comfort = _known(self.water_heater_target_temperature, "Comfort")
+        self._set_water_heater_temperature(comfort, temperature)
 
     async def async_set_water_heater_reduced_temperature(self, temperature: float):
         """Set water heater reduced temperature"""
         if self.water_heater_target_temperature is None:
             await self.async_update_state()
-        await self._async_set_water_heater_temperature(
-            self._comfort_temperature(), temperature
-        )
+        comfort = _known(self.water_heater_target_temperature, "Comfort")
+        await self._async_set_water_heater_temperature(comfort, temperature)
 
     def set_water_heater_operation_mode(self, operation_mode: str):
         """Set water heater operation mode"""

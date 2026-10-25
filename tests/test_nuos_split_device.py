@@ -86,10 +86,14 @@ async def test_set_operation_mode(api: MagicMock, is_async: bool, loaded: bool) 
     assert device.data["mode"] == 1
 
 
-async def test_set_temperature(api: MagicMock, is_async: bool) -> None:
-    """The new comfort temperature is read back at once."""
+@pytest.mark.parametrize("loaded", [True, False], ids=["loaded", "no_reduced"])
+async def test_set_temperature(api: MagicMock, is_async: bool, loaded: bool) -> None:
+    """The reduced setpoint, loaded when unknown, is kept; comfort reads back."""
     device = make_device(api, {"comfortTemp": 50, "reducedTemp": 40})
-    await device.async_update_state()
+    if loaded:
+        await device.async_update_state()
+    else:
+        device.data = {"on": True}
 
     await call(device, "set_water_heater_temperature", is_async, 55)
 
@@ -118,6 +122,17 @@ async def test_set_reduced_temperature_keeps_comfort(
     )
     assert device.water_heater_target_temperature == 50
     assert device.water_heater_reduced_temperature == 42
+
+
+async def test_set_temperature_without_reduced(api: MagicMock, is_async: bool) -> None:
+    """An unknown reduced setpoint raises and sends nothing."""
+    device = make_device(api, {"comfortTemp": 50, "waterTemp": 35})
+
+    with pytest.raises(ValueError):
+        await call(device, "set_water_heater_temperature", is_async, 55)
+
+    api_method(api, "get_velis_plant_data", is_async).assert_called_once()
+    api_method(api, "set_nuos_temperature", is_async).assert_not_called()
 
 
 async def test_set_reduced_temperature_without_comfort(
