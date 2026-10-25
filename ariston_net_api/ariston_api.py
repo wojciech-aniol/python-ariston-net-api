@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import re
 import time
 from typing import Any
 
@@ -39,6 +41,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# The cloud answers a 429 with "Requests are blocked for 66 seconds".
+BLOCKED_FOR = re.compile(r"blocked for (\d+) seconds?", re.IGNORECASE)
+DEFAULT_BLOCK_SECONDS = 60
+
 
 class ConnectionException(Exception):
     """When can not connect to Ariston cloud"""
@@ -60,6 +66,21 @@ class AristonAPI:
         self.__api_url = api_url
         self.__token = ""
         self.__user_agent = user_agent
+        self._blocked_until = 0.0
+
+    def __check_blocked(self) -> None:
+        """Raise while the cloud blocks our requests"""
+        seconds_left = self._blocked_until - time.monotonic()
+        if seconds_left > 0:
+            raise ConnectionException(
+                429, f"blocked locally for {math.ceil(seconds_left)} s"
+            )
+
+    def __block(self, content: str) -> None:
+        """Stop requests for the time the cloud asks in a 429 answer"""
+        match = BLOCKED_FOR.search(content)
+        seconds = int(match.group(1)) if match else DEFAULT_BLOCK_SECONDS
+        self._blocked_until = time.monotonic() + seconds
 
     def connect(self) -> bool:
         """Login to ariston cloud and get token"""
@@ -484,6 +505,7 @@ class AristonAPI:
         is_retry: bool = False,
     ) -> dict[str, Any] | None:
         """Request with requests"""
+        self.__check_blocked()
         headers: dict[str, Any] = {
             "User-Agent": self.__user_agent,
             "ar.authToken": self.__token,
@@ -509,12 +531,13 @@ class AristonAPI:
                 case 404:
                     return None
                 case 429:
-                    content = response.content.decode()
+                    content = response.content.decode(errors="replace")
+                    self.__block(content)
                     raise ConnectionException(response.status_code, content)
+                case status if status >= 500 and not is_retry:
+                    time.sleep(5)
+                    return self.__request(method, path, params, body, True)
                 case _:
-                    if not is_retry:
-                        time.sleep(5)
-                        return self.__request(method, path, params, body, True)
                     raise ConnectionException(response.status_code)
 
         if len(response.content) > 0:
@@ -945,6 +968,7 @@ class AristonAPI:
         is_retry: bool = False,
     ) -> dict[str, Any] | None:
         """Async request with aiohttp"""
+        self.__check_blocked()
         headers: dict[str, Any] = {
             "User-Agent": self.__user_agent,
             "ar.authToken": self.__token,
@@ -981,14 +1005,17 @@ class AristonAPI:
                     case 404:
                         return None
                     case 429:
-                        content = await response.content.read()
+                        content = (await response.content.read()).decode(
+                            errors="replace"
+                        )
+                        self.__block(content)
                         raise ConnectionException(response.status, content)
+                    case status if status >= 500 and not is_retry:
+                        await asyncio.sleep(5)
+                        return await self.__async_request(
+                            method, path, params, body, True
+                        )
                     case _:
-                        if not is_retry:
-                            await asyncio.sleep(5)
-                            return await self.__async_request(
-                                method, path, params, body, True
-                            )
                         raise ConnectionException(response.status)
 
             if response.content_length and response.content_length > 0:
