@@ -134,9 +134,9 @@ class AristonBsbDevice(AristonDevice):
         return BsbZoneMode.OFF.value in self.get_zone_mode_options(zone)
 
     @property
-    def is_flame_on_value(self) -> bool:
+    def is_flame_on_value(self) -> bool | None:
         """Get is flame on value"""
-        return self.data.get(BsbDeviceProperties.FLAME, False)
+        return self.data.get(BsbDeviceProperties.FLAME)
 
     @property
     def is_heating_pump_on_value(self) -> bool | None:

@@ -52,16 +52,18 @@ async def test_set_zone_mode_from_off(api: MagicMock) -> None:
 
 
 @pytest.mark.parametrize(
-    ("data", "expected"),
-    [({"hpOn": True}, True), ({"hpOn": False}, False), ({}, None)],
+    ("name", "key"),
+    [("is_flame_on_value", "flame"), ("is_heating_pump_on_value", "hpOn")],
 )
-async def test_is_heating_pump_on_value(
-    api: MagicMock, data: dict[str, Any], expected: bool | None
+@pytest.mark.parametrize("value", [True, False, None])
+async def test_on_off_values(
+    api: MagicMock, name: str, key: str, value: bool | None
 ) -> None:
-    """The heat pump state comes from hpOn."""
+    """Flame and heat pump states are None when the key is missing."""
+    data = {} if value is None else {key: value}
     device = await make_device(api, {}, **data)
 
-    assert device.is_heating_pump_on_value is expected
+    assert getattr(device, name) is value
 
 
 @pytest.mark.parametrize(
