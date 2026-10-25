@@ -1,0 +1,118 @@
+name: Auto release
+
+# Each merged PR into main that changes ariston_net_api/ gets a patch release on PyPI.
+# PR labels patch, minor or major always release; no-release never does.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bump: ${{ steps.plan.outputs.bump }}
+    steps:
+      - name: Pick the version bump
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          # GitHub links a commit to its PR some seconds after the push,
+          # so read the PR number from the merge or squash subject first.
+          subject=${MESSAGE%%$'\n'*}
+          merge_re='^Merge pull request #([0-9]+) '
+          squash_re='\(#([0-9]+)\)$'
+          pr=""
+          if [[ $subject =~ $merge_re || $subject =~ $squash_re ]]; then
+            # On an error gh still prints the error body.
+            pr=$(gh api "repos/$GH_REPO/pulls/${BASH_REMATCH[1]}" \
+              --jq 'select(.merge_commit_sha == env.GITHUB_SHA and .base.ref == "main" and .merged_at)') \
+              || pr=""
+          fi
+          for attempt in 1 2 3 4 5 6; do
+            [ -n "$pr" ] && break
+            [ "$attempt" = 1 ] || sleep 10
+            pr=$(gh api "repos/$GH_REPO/commits/$GITHUB_SHA/pulls" \
+              --jq '[.[] | select(.base.ref == "main" and .merged_at)][0] // empty')
+          done
+          if [ -z "$pr" ]; then
+            echo "No merged PR for $GITHUB_SHA."
+            bump="none"
+          else
+            number=$(jq -r .number <<<"$pr")
+            labels=$(jq -r '.labels[].name' <<<"$pr")
+            if grep -qx no-release <<<"$labels"; then
+              bump="none"
+            elif grep -qx major <<<"$labels"; then
+              bump="major"
+            elif grep -qx minor <<<"$labels"; then
+              bump="minor"
+            elif grep -qx patch <<<"$labels"; then
+              bump="patch"
+            elif ! gh api --paginate "repos/$GH_REPO/pulls/$number/files" \
+              --jq '.[].filename' | grep -q '^ariston_net_api/'; then
+              echo "PR #$number does not change ariston_net_api/."
+              bump="none"
+            else
+              bump="patch"
+            fi
+          fi
+          echo "Bump: $bump"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: [tests, plan]
+    if: needs.plan.outputs.bump != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    concurrency:
+      group: release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Bump the version
+        id: version
+        env:
+          BUMP: ${{ needs.plan.outputs.bump }}
+        run: |
+          IFS=. read -r major minor patch < <(sed -nE 's/^version = "([^"]+)"$/\1/p' pyproject.toml)
+          case "$BUMP" in
+            major) version="$((major + 1)).0.0" ;;
+            minor) version="$major.$((minor + 1)).0" ;;
+            *) version="$major.$minor.$((patch + 1))" ;;
+          esac
+          sed -i -E "s/^version = \"[^\"]+\"$/version = \"$version\"/" pyproject.toml
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Commit, tag and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $VERSION"
+          git tag "$VERSION"
+          git push --atomic origin HEAD:main "$VERSION"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$VERSION" --title "$VERSION" --generate-notes --verify-tag
+          # A release made with this token does not start publish.yml, so start it here.
+          gh workflow run publish.yml --ref "$VERSION"
