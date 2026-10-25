@@ -60,7 +60,7 @@ class Ariston:
     async def async_discover(self) -> list[dict[str, Any]]:
         """Retreive ariston devices from the cloud"""
         if self.api is None:
-            _LOGGER.exception("Call async_connect first")
+            _LOGGER.error("Call async_connect first")
             return []
         cloud_devices = await _async_discover(self.api)
         self.cloud_devices = cloud_devices
@@ -71,7 +71,7 @@ class Ariston:
     ) -> AristonBaseDevice | None:
         """Get ariston device"""
         if self.api is None:
-            _LOGGER.exception("Call async_connect() first")
+            _LOGGER.error("Call async_connect() first")
             return None
 
         if len(self.cloud_devices) == 0:
@@ -95,7 +95,7 @@ def _get_device(
         None,
     )
     if device is None:
-        _LOGGER.exception("No device %s found.", gateway)
+        _LOGGER.error("No device %s found.", gateway)
         return None
 
     system_type = device.get(DeviceAttribute.SYS)
@@ -112,14 +112,14 @@ def _get_device(
             whe_type = device.get(VelisDeviceAttribute.WHE_TYPE, None)
             device_class = _MAP_WHE_TYPES_TO_CLASS.get(whe_type, None)
             if device_class is None:
-                _LOGGER.exception("Unsupported whe type %s", whe_type)
+                _LOGGER.error("Unsupported whe type %s", whe_type)
                 return None
             return device_class(api, device)
 
         case SystemType.BSB.value:
             return AristonBsbDevice(api, device)
         case _:
-            _LOGGER.exception("Unsupported system type %s", system_type)
+            _LOGGER.error("Unsupported system type %s", system_type)
             return None
 
 
