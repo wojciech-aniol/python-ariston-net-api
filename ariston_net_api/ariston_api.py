@@ -265,12 +265,19 @@ class AristonAPI:
             },
         )
 
-    def set_nuos_mode(self, gw_id: str, value: NuosSplitOperativeMode) -> None:
+    def set_nuos_mode(
+        self,
+        gw_id: str,
+        value: NuosSplitOperativeMode,
+        old_value: int | None = None,
+    ) -> None:
         """Set Velis Nuos mode"""
         self._post(
             f"{self.__api_url}{ARISTON_VELIS}/{PlantData.Slp.value}/{gw_id}/operativeMode",
+            # The cloud ignores GREEN without "old". Any value works.
             {
                 "new": value.value,
+                "old": value.value if old_value is None else old_value,
             },
         )
 
@@ -724,13 +731,18 @@ class AristonAPI:
         )
 
     async def async_set_nuos_mode(
-        self, gw_id: str, value: NuosSplitOperativeMode
+        self,
+        gw_id: str,
+        value: NuosSplitOperativeMode,
+        old_value: int | None = None,
     ) -> None:
         """Async set Velis Nuos mode"""
         await self._async_post(
             f"{self.__api_url}{ARISTON_VELIS}/{PlantData.Slp.value}/{gw_id}/operativeMode",
+            # The cloud ignores GREEN without "old". Any value works.
             {
                 "new": value.value,
+                "old": value.value if old_value is None else old_value,
             },
         )
 
