@@ -275,11 +275,9 @@ class AristonGalevoDevice(AristonDevice):
         return self._get_item_by_id(DeviceProperties.HOLIDAY, PropertyType.EXPIRES_ON)
 
     @property
-    def automatic_thermoregulation(self) -> str:
+    def automatic_thermoregulation(self) -> bool | None:
         """Get automatic thermoregulation"""
-        return self._get_item_by_id(
-            DeviceProperties.AUTOMATIC_THERMOREGULATION, PropertyType.VALUE
-        )
+        return self._get_bool_item_by_id(DeviceProperties.AUTOMATIC_THERMOREGULATION)
 
     @property
     def heating_circuit_pressure_value(self) -> str:
@@ -348,9 +346,9 @@ class AristonGalevoDevice(AristonDevice):
         )
 
     @property
-    def is_quiet_value(self) -> str | None:
+    def is_quiet_value(self) -> bool | None:
         """Get is quiet value"""
-        return self._get_item_by_id(DeviceProperties.IS_QUIET, PropertyType.VALUE)
+        return self._get_bool_item_by_id(DeviceProperties.IS_QUIET)
 
     @property
     def ch_flow_setpoint_temp_value(self) -> str:
@@ -397,9 +395,9 @@ class AristonGalevoDevice(AristonDevice):
         return self._get_bool_item_by_id(DeviceProperties.IS_HEATING_PUMP_ON)
 
     @property
-    def holiday_mode_value(self) -> bool:
+    def holiday_mode_value(self) -> bool | None:
         """Get holiday mode on value"""
-        return self._get_item_by_id(DeviceProperties.HOLIDAY, PropertyType.VALUE)
+        return self._get_bool_item_by_id(DeviceProperties.HOLIDAY)
 
     def get_zone_mode(self, zone: int) -> ZoneMode:
         """Get zone mode on value"""

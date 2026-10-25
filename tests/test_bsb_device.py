@@ -96,4 +96,4 @@ async def test_get_zone_heat_request_value(
     """The zone request comes from heatOrCoolReq."""
     device = await make_device(api, zone)
 
-    assert device.get_zone_heat_request_value(1) is expected
+    assert device.get_zone_heat_request_value(zone_number=1) is expected

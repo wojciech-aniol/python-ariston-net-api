@@ -82,9 +82,9 @@ class AristonBsbDevice(AristonDevice):
         )
         return BsbZoneMode.UNDEFINED if value is None else BsbZoneMode(value)
 
-    def get_zone_heat_request_value(self, zone: int) -> bool | None:
+    def get_zone_heat_request_value(self, zone_number: int) -> bool | None:
         """Get zone heat or cool request value"""
-        return self.get_zone(zone).get(BsbZoneProperties.HEAT_OR_COOL_REQ)
+        return self.get_zone(zone_number).get(BsbZoneProperties.HEAT_OR_COOL_REQ)
 
     def get_zone_mode_options(self, zone: int) -> list[int]:
         """Get zone mode on options"""

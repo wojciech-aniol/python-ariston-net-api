@@ -18,13 +18,16 @@ def make_device(api: MagicMock, items: list[dict[str, Any]]) -> AristonGalevoDev
     return device
 
 
-@pytest.mark.parametrize(
-    ("name", "item_id"),
-    [
-        ("is_flame_on_value", "IsFlameOn"),
-        ("is_heating_pump_on_value", "IsHeatingPumpOn"),
-    ],
-)
+ON_OFF_VALUES = [
+    ("is_flame_on_value", "IsFlameOn"),
+    ("is_heating_pump_on_value", "IsHeatingPumpOn"),
+    ("holiday_mode_value", "Holiday"),
+    ("automatic_thermoregulation", "AutomaticThermoregulation"),
+    ("is_quiet_value", "IsQuite"),
+]
+
+
+@pytest.mark.parametrize(("name", "item_id"), ON_OFF_VALUES)
 @pytest.mark.parametrize(
     ("value", "expected"), [(1.0, True), (0.0, False), (True, True), (False, False)]
 )
@@ -37,8 +40,8 @@ def test_on_off_values(
     assert getattr(device, name) is expected
 
 
-@pytest.mark.parametrize("name", ["is_flame_on_value", "is_heating_pump_on_value"])
-def test_on_off_values_missing(api: MagicMock, name: str) -> None:
+@pytest.mark.parametrize(("name", "item_id"), ON_OFF_VALUES)
+def test_on_off_values_missing(api: MagicMock, name: str, item_id: str) -> None:
     """A device without the item has no value."""
     assert getattr(make_device(api, []), name) is None
 
