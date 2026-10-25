@@ -265,6 +265,17 @@ class AristonAPI:
             },
         )
 
+    @staticmethod
+    def _nuos_mode_body(
+        value: NuosSplitOperativeMode, old_value: int | None
+    ) -> dict[str, int]:
+        """Get the body of a Nuos mode change"""
+        # The cloud ignores GREEN without "old". If the old mode is unknown,
+        # send another mode, as old == new may be ignored too.
+        if old_value is None:
+            old_value = 1 if value.value == 0 else 0
+        return {"new": value.value, "old": old_value}
+
     def set_nuos_mode(
         self,
         gw_id: str,
@@ -274,11 +285,7 @@ class AristonAPI:
         """Set Velis Nuos mode"""
         self._post(
             f"{self.__api_url}{ARISTON_VELIS}/{PlantData.Slp.value}/{gw_id}/operativeMode",
-            # The cloud ignores GREEN without "old". Any value works.
-            {
-                "new": value.value,
-                "old": value.value if old_value is None else old_value,
-            },
+            self._nuos_mode_body(value, old_value),
         )
 
     def set_bsb_mode(self, gw_id: str, value: BsbOperativeMode) -> None:
@@ -739,11 +746,7 @@ class AristonAPI:
         """Async set Velis Nuos mode"""
         await self._async_post(
             f"{self.__api_url}{ARISTON_VELIS}/{PlantData.Slp.value}/{gw_id}/operativeMode",
-            # The cloud ignores GREEN without "old". Any value works.
-            {
-                "new": value.value,
-                "old": value.value if old_value is None else old_value,
-            },
+            self._nuos_mode_body(value, old_value),
         )
 
     async def async_set_bsb_mode(self, gw_id: str, value: BsbOperativeMode) -> None:

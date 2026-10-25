@@ -175,13 +175,13 @@ class AristonNuosSplitDevice(AristonVelisDevice):
 
     def set_water_heater_reduced_temperature(self, temperature: float):
         """Set water heater reduced temperature"""
-        if len(self.data) == 0:
+        if self.water_heater_target_temperature is None:
             self.update_state()
         self._set_water_heater_temperature(self._comfort_temperature(), temperature)
 
     async def async_set_water_heater_reduced_temperature(self, temperature: float):
         """Set water heater reduced temperature"""
-        if len(self.data) == 0:
+        if self.water_heater_target_temperature is None:
             await self.async_update_state()
         await self._async_set_water_heater_temperature(
             self._comfort_temperature(), temperature
@@ -190,12 +190,16 @@ class AristonNuosSplitDevice(AristonVelisDevice):
     def set_water_heater_operation_mode(self, operation_mode: str):
         """Set water heater operation mode"""
         mode = NuosSplitOperativeMode[operation_mode]
+        if self.water_heater_mode_value is None:
+            self.update_state()
         self.api.set_nuos_mode(self.gw, mode, self.water_heater_mode_value)
         self.data[NuosSplitProperties.OP_MODE] = mode.value
 
     async def async_set_water_heater_operation_mode(self, operation_mode: str):
         """Async set water heater operation mode"""
         mode = NuosSplitOperativeMode[operation_mode]
+        if self.water_heater_mode_value is None:
+            await self.async_update_state()
         await self.api.async_set_nuos_mode(self.gw, mode, self.water_heater_mode_value)
         self.data[NuosSplitProperties.OP_MODE] = mode.value
 
