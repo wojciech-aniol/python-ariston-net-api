@@ -44,6 +44,9 @@ _LOGGER = logging.getLogger(__name__)
 # The cloud answers a 429 with "Requests are blocked for 66 seconds".
 _BLOCKED_FOR = re.compile(r"blocked for (\d+) seconds?", re.IGNORECASE)
 _DEFAULT_BLOCK_SECONDS = 60
+# Block end (time.monotonic) per API URL and login. A new API object for
+# the same account must see it too.
+_blocked_until: dict[tuple[str, str], float] = {}
 
 
 class ConnectionException(Exception):
@@ -66,11 +69,11 @@ class AristonAPI:
         self.__api_url = api_url
         self.__token = ""
         self.__user_agent = user_agent
-        self._blocked_until = 0.0
+        self.__account = (api_url, username)
 
     def __check_blocked(self) -> None:
         """Raise while the cloud blocks our requests"""
-        seconds_left = self._blocked_until - time.monotonic()
+        seconds_left = _blocked_until.get(self.__account, 0.0) - time.monotonic()
         if seconds_left > 0:
             raise ConnectionException(
                 429, f"blocked locally for {math.ceil(seconds_left)} s"
@@ -87,7 +90,9 @@ class AristonAPI:
                 "Unknown 429 answer, blocking requests for %s s: %s", seconds, content
             )
         # A later 429 must not shorten a longer block.
-        self._blocked_until = max(self._blocked_until, time.monotonic() + seconds)
+        _blocked_until[self.__account] = max(
+            _blocked_until.get(self.__account, 0.0), time.monotonic() + seconds
+        )
 
     def connect(self) -> bool:
         """Login to ariston cloud and get token"""
@@ -541,7 +546,7 @@ class AristonAPI:
                     content = response.content.decode(errors="replace")
                     self.__block(content)
                     raise ConnectionException(response.status_code, content)
-                case status if status >= 500 and not is_retry:
+                case status if (status == 408 or status >= 500) and not is_retry:
                     time.sleep(5)
                     return self.__request(method, path, params, body, True)
                 case _:
@@ -1017,7 +1022,7 @@ class AristonAPI:
                         )
                         self.__block(content)
                         raise ConnectionException(response.status, content)
-                    case status if status >= 500 and not is_retry:
+                    case status if (status == 408 or status >= 500) and not is_retry:
                         await asyncio.sleep(5)
                         return await self.__async_request(
                             method, path, params, body, True

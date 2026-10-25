@@ -101,6 +101,7 @@ def is_async(request: pytest.FixtureRequest) -> bool:
 def cloud(monkeypatch: pytest.MonkeyPatch) -> FakeCloud:
     """Replace the network of both request paths with a fake cloud."""
     cloud = FakeCloud()
+    monkeypatch.setattr(ariston_api, "_blocked_until", {})
     monkeypatch.setattr(ariston_api.requests, "request", cloud.request)
     monkeypatch.setattr(ariston_api.aiohttp, "ClientSession", cloud.session)
     return cloud
@@ -159,19 +160,22 @@ async def test_429_blocks_requests_for_the_time_in_the_answer(
     assert cloud.calls == 2
 
 
-async def test_429_blocks_only_its_own_api_object(
+async def test_429_blocks_the_account_not_others(
     cloud: FakeCloud, clock: FakeClock, is_async: bool
 ) -> None:
-    """Another account is not blocked."""
+    """A new API object of the same account is blocked, another account is not."""
     cloud.answers = [Answer(429), Answer(200), Answer(200)]
-    blocked = AristonAPI("user", "password")
     with pytest.raises(ConnectionException):
-        await get_devices(blocked, is_async)
+        await get_devices(AristonAPI("user", "password"), is_async)
 
     assert await get_devices(AristonAPI("other", "password"), is_async) == []
+    assert (
+        await get_devices(AristonAPI("user", "password", "http://other/"), is_async)
+        == []
+    )
     with pytest.raises(ConnectionException):
-        await get_devices(blocked, is_async)
-    assert cloud.calls == 2
+        await get_devices(AristonAPI("user", "new password"), is_async)
+    assert cloud.calls == 3
 
 
 async def test_later_429_does_not_shorten_the_block(
@@ -244,11 +248,11 @@ async def test_4xx_is_not_retried(
     assert clock.sleeps == []
 
 
-@pytest.mark.parametrize("status", [500, 503])
-async def test_5xx_is_retried_once(
+@pytest.mark.parametrize("status", [408, 500, 503])
+async def test_server_error_and_timeout_are_retried_once(
     cloud: FakeCloud, clock: FakeClock, is_async: bool, status: int
 ) -> None:
-    """A server error is sent again once after 5 s."""
+    """A server error or a request timeout is sent again once after 5 s."""
     cloud.answers = [Answer(status), Answer(status), Answer(200)]
 
     with pytest.raises(ConnectionException) as error:
