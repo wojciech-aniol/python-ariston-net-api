@@ -61,8 +61,13 @@ def test_get_device(
             "Unsupported whe type 99",
         ),
         (
-            [{DeviceAttribute.GW: GATEWAY, DeviceAttribute.SYS: 1}],
-            "Unsupported system type 1",
+            [
+                {
+                    DeviceAttribute.GW: GATEWAY,
+                    DeviceAttribute.SYS: SystemType.UNKNOWN.value,
+                }
+            ],
+            "Unsupported system type -1",
         ),
     ],
 )
@@ -86,8 +91,6 @@ async def test_not_connected(caplog: pytest.LogCaptureFixture) -> None:
     assert await ariston.async_discover() == []
     assert await ariston.async_hello(GATEWAY) is None
 
-    assert caplog.record_tuples == [
-        ("ariston_net_api", logging.ERROR, "Call async_connect first"),
-        ("ariston_net_api", logging.ERROR, "Call async_connect() first"),
-    ]
+    record = ("ariston_net_api", logging.ERROR, "Call async_connect() first")
+    assert caplog.record_tuples == [record, record]
     assert "NoneType" not in caplog.text

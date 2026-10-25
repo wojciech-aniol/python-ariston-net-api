@@ -82,6 +82,10 @@ class AristonBsbDevice(AristonDevice):
         )
         return BsbZoneMode.UNDEFINED if value is None else BsbZoneMode(value)
 
+    def get_zone_heat_request_value(self, zone: int) -> bool | None:
+        """Get zone heat or cool request value"""
+        return self.get_zone(zone).get(BsbZoneProperties.HEAT_OR_COOL_REQ)
+
     def get_zone_mode_options(self, zone: int) -> list[int]:
         """Get zone mode on options"""
         return (
@@ -270,10 +274,12 @@ class AristonBsbDevice(AristonDevice):
     def get_measured_temp_value(self, zone: int) -> float | None:
         """Get zone measured temp value"""
         zone_data = self.get_zone(zone)
-        # Without a sensor the cloud sends roomTemp 0.0.
-        if zone_data.get(BsbZoneProperties.HAS_ROOM_SENS) is False:
+        # roomTemp is not a real reading without a working sensor.
+        if zone_data.get(BsbZoneProperties.HAS_ROOM_SENS) is False or zone_data.get(
+            BsbZoneProperties.ROOM_TEMP_ERROR
+        ):
             return None
-        return zone_data.get(BsbZoneProperties.ROOM_TEMP, 0)
+        return zone_data.get(BsbZoneProperties.ROOM_TEMP)
 
     def get_measured_temp_decimals(self, _) -> int:
         """Get zone measured temp decimals"""

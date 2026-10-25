@@ -58,7 +58,7 @@ async def test_set_zone_mode_from_off(api: MagicMock) -> None:
 async def test_is_heating_pump_on_value(
     api: MagicMock, data: dict[str, Any], expected: bool | None
 ) -> None:
-    """The heat pump state comes from hpOn; gas boilers have none."""
+    """The heat pump state comes from hpOn."""
     device = await make_device(api, {}, **data)
 
     assert device.is_heating_pump_on_value is expected
@@ -68,14 +68,30 @@ async def test_is_heating_pump_on_value(
     ("zone", "expected"),
     [
         ({"hasRoomSens": False, "roomTemp": 0.0}, None),
+        ({"hasRoomSens": True, "roomTempError": True, "roomTemp": 0.0}, None),
+        ({"hasRoomSens": True, "roomTempError": False, "roomTemp": 0.0}, 0.0),
         ({"hasRoomSens": True, "roomTemp": 21.5}, 21.5),
         ({"roomTemp": 21.5}, 21.5),
+        ({}, None),
     ],
 )
 async def test_get_measured_temp_value(
     api: MagicMock, zone: dict[str, Any], expected: float | None
 ) -> None:
-    """A zone without a room sensor has no measured temperature."""
+    """A zone without a working room sensor has no measured temperature."""
     device = await make_device(api, zone)
 
     assert device.get_measured_temp_value(1) == expected
+
+
+@pytest.mark.parametrize(
+    ("zone", "expected"),
+    [({"heatOrCoolReq": True}, True), ({"heatOrCoolReq": False}, False), ({}, None)],
+)
+async def test_get_zone_heat_request_value(
+    api: MagicMock, zone: dict[str, Any], expected: bool | None
+) -> None:
+    """The zone request comes from heatOrCoolReq."""
+    device = await make_device(api, zone)
+
+    assert device.get_zone_heat_request_value(1) is expected

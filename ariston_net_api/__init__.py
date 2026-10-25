@@ -60,7 +60,7 @@ class Ariston:
     async def async_discover(self) -> list[dict[str, Any]]:
         """Retreive ariston devices from the cloud"""
         if self.api is None:
-            _LOGGER.error("Call async_connect first")
+            _LOGGER.error("Call async_connect() first")
             return []
         cloud_devices = await _async_discover(self.api)
         self.cloud_devices = cloud_devices
