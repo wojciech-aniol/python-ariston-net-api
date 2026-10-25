@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import re
 import time
 from typing import Any
 
@@ -39,6 +41,13 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# The cloud answers a 429 with "Requests are blocked for 66 seconds".
+_BLOCKED_FOR = re.compile(r"blocked for (\d+) seconds?", re.IGNORECASE)
+_DEFAULT_BLOCK_SECONDS = 60
+# Block end (time.monotonic) per API URL and login. A new API object for
+# the same account must see it too.
+_blocked_until: dict[tuple[str, str], float] = {}
+
 
 class ConnectionException(Exception):
     """When can not connect to Ariston cloud"""
@@ -60,6 +69,30 @@ class AristonAPI:
         self.__api_url = api_url
         self.__token = ""
         self.__user_agent = user_agent
+        self.__account = (api_url, username)
+
+    def __check_blocked(self) -> None:
+        """Raise while the cloud blocks our requests"""
+        seconds_left = _blocked_until.get(self.__account, 0.0) - time.monotonic()
+        if seconds_left > 0:
+            raise ConnectionException(
+                429, f"blocked locally for {math.ceil(seconds_left)} s"
+            )
+
+    def __block(self, content: str) -> None:
+        """Stop requests for the time the cloud asks in a 429 answer"""
+        if match := _BLOCKED_FOR.search(content):
+            seconds = int(match.group(1))
+            _LOGGER.debug("Cloud blocks requests for %s s", seconds)
+        else:
+            seconds = _DEFAULT_BLOCK_SECONDS
+            _LOGGER.warning(
+                "Unknown 429 answer, blocking requests for %s s: %s", seconds, content
+            )
+        # A later 429 must not shorten a longer block.
+        _blocked_until[self.__account] = max(
+            _blocked_until.get(self.__account, 0.0), time.monotonic() + seconds
+        )
 
     def connect(self) -> bool:
         """Login to ariston cloud and get token"""
@@ -484,6 +517,7 @@ class AristonAPI:
         is_retry: bool = False,
     ) -> dict[str, Any] | None:
         """Request with requests"""
+        self.__check_blocked()
         headers: dict[str, Any] = {
             "User-Agent": self.__user_agent,
             "ar.authToken": self.__token,
@@ -509,12 +543,13 @@ class AristonAPI:
                 case 404:
                     return None
                 case 429:
-                    content = response.content.decode()
+                    content = response.content.decode(errors="replace")
+                    self.__block(content)
                     raise ConnectionException(response.status_code, content)
+                case status if (status == 408 or status >= 500) and not is_retry:
+                    time.sleep(5)
+                    return self.__request(method, path, params, body, True)
                 case _:
-                    if not is_retry:
-                        time.sleep(5)
-                        return self.__request(method, path, params, body, True)
                     raise ConnectionException(response.status_code)
 
         if len(response.content) > 0:
@@ -945,6 +980,7 @@ class AristonAPI:
         is_retry: bool = False,
     ) -> dict[str, Any] | None:
         """Async request with aiohttp"""
+        self.__check_blocked()
         headers: dict[str, Any] = {
             "User-Agent": self.__user_agent,
             "ar.authToken": self.__token,
@@ -981,14 +1017,17 @@ class AristonAPI:
                     case 404:
                         return None
                     case 429:
-                        content = await response.content.read()
+                        content = (await response.content.read()).decode(
+                            errors="replace"
+                        )
+                        self.__block(content)
                         raise ConnectionException(response.status, content)
+                    case status if (status == 408 or status >= 500) and not is_retry:
+                        await asyncio.sleep(5)
+                        return await self.__async_request(
+                            method, path, params, body, True
+                        )
                     case _:
-                        if not is_retry:
-                            await asyncio.sleep(5)
-                            return await self.__async_request(
-                                method, path, params, body, True
-                            )
                         raise ConnectionException(response.status)
 
             if response.content_length and response.content_length > 0:
