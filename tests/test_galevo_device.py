@@ -14,6 +14,58 @@ from ariston_net_api.const import (
 from ariston_net_api.galevo_device import AristonGalevoDevice
 
 GATEWAY = "GW0000000001"
+
+
+def make_device(api: MagicMock, items: list[dict[str, Any]]) -> AristonGalevoDevice:
+    """Return a GALEVO device with the given cloud items."""
+    device = AristonGalevoDevice(api, {DeviceAttribute.GW: GATEWAY})
+    device.data = {"items": items}
+    return device
+
+
+ON_OFF_VALUES = [
+    ("is_flame_on_value", "IsFlameOn"),
+    ("is_heating_pump_on_value", "IsHeatingPumpOn"),
+    ("holiday_mode_value", "Holiday"),
+    ("automatic_thermoregulation", "AutomaticThermoregulation"),
+    ("is_quiet_value", "IsQuite"),
+]
+
+
+@pytest.mark.parametrize(("name", "item_id"), ON_OFF_VALUES)
+@pytest.mark.parametrize(
+    ("value", "expected"), [(1.0, True), (0.0, False), (True, True), (False, False)]
+)
+def test_on_off_values(
+    api: MagicMock, name: str, item_id: str, value: Any, expected: bool
+) -> None:
+    """On/off items are bools, though the cloud sends 0.0 and 1.0."""
+    device = make_device(api, [{"id": item_id, "zone": 0, "value": value}])
+
+    assert getattr(device, name) is expected
+
+
+@pytest.mark.parametrize(("name", "item_id"), ON_OFF_VALUES)
+def test_on_off_values_missing(api: MagicMock, name: str, item_id: str) -> None:
+    """A device without the item has no value."""
+    assert getattr(make_device(api, []), name) is None
+
+
+def test_get_zone_heat_request_value(api: MagicMock) -> None:
+    """Each zone reads its own request; a missing zone has none."""
+    device = make_device(
+        api,
+        [
+            {"id": "ZoneHeatRequest", "zone": 1, "value": 1.0},
+            {"id": "ZoneHeatRequest", "zone": 2, "value": 0.0},
+        ],
+    )
+
+    assert device.get_zone_heat_request_value(1) is True
+    assert device.get_zone_heat_request_value(2) is False
+    assert device.get_zone_heat_request_value(3) is None
+
+
 FEATURES = {"hasMetering": True, "zones": [{"num": 1}]}
 
 
@@ -50,7 +102,7 @@ METERING = {
 }
 
 
-async def make_device(
+async def make_metering_device(
     api: MagicMock,
     features: dict[str, Any] = FEATURES,
     plant_modes: list[int] | None = None,
@@ -79,7 +131,7 @@ async def update_metering(device: AristonGalevoDevice, is_async: bool) -> None:
 @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
 async def test_metering_totals(api: MagicMock, is_async: bool) -> None:
     """A total is the sum of the not rounded kWh row."""
-    device = await make_device(api, plant_modes=[0, 1, 2, 5])
+    device = await make_metering_device(api, plant_modes=[0, 1, 2, 5])
 
     await update_metering(device, is_async)
 
@@ -99,7 +151,7 @@ async def test_metering_totals(api: MagicMock, is_async: bool) -> None:
 
 async def test_metering_keeps_only_the_raw_kwh_view(api: MagicMock) -> None:
     """The rounded, physical unit and currency views are dropped."""
-    device = await make_device(api)
+    device = await make_metering_device(api)
 
     await device.async_update_metering()
 
@@ -112,7 +164,7 @@ async def test_metering_keeps_only_the_raw_kwh_view(api: MagicMock) -> None:
 
 async def test_metering_total_without_row_is_none(api: MagicMock) -> None:
     """No data yet, or no such row, gives None."""
-    device = await make_device(api)
+    device = await make_metering_device(api)
     total = (
         MeteringTab.PRODUCED_ENERGY,
         MeteringSeries.COOLING,
@@ -144,7 +196,7 @@ async def test_no_metering_sends_no_request(
     api: MagicMock, is_async: bool, features: dict[str, Any]
 ) -> None:
     """A device without metering never logs in to the web app."""
-    device = await make_device(api, features)
+    device = await make_metering_device(api, features)
 
     await update_metering(device, is_async)
 
@@ -166,7 +218,7 @@ async def test_metering_has_cooling_from_plant_modes(
     api: MagicMock, plant_modes: list[int] | None, has_cooling: bool
 ) -> None:
     """The web app sends hasCooling when a plant mode can cool."""
-    device = await make_device(api, plant_modes=plant_modes)
+    device = await make_metering_device(api, plant_modes=plant_modes)
 
     await device.async_update_metering()
 

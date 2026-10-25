@@ -43,8 +43,9 @@ class Ariston:
     """Ariston class"""
 
     def __init__(self) -> None:
-        self.api = None
+        self.api: AristonAPI | None = None
         self.cloud_devices: list[dict[str, Any]] = []
+        self._account: tuple[str, str] | None = None
 
     async def async_connect(
         self,
@@ -54,32 +55,40 @@ class Ariston:
         user_agent: str = ARISTON_USER_AGENT,
     ) -> bool:
         """Connect to the ariston cloud"""
-        self.api = AristonAPI(username, password, api_url, user_agent)
-        return await self.api.async_connect()
+        api = AristonAPI(username, password, api_url, user_agent)
+        # A cloud error raises here and keeps the earlier login.
+        if not await api.async_connect():
+            self.api = None
+            return False
+        if self._account != (api_url, username):
+            self._account = (api_url, username)
+            self.cloud_devices = []
+        self.api = api
+        return True
 
     async def async_discover(self) -> list[dict[str, Any]]:
         """Retreive ariston devices from the cloud"""
-        if self.api is None:
-            _LOGGER.exception("Call async_connect first")
+        api = self.api
+        if api is None:
+            _LOGGER.error("Call async_connect() first")
             return []
-        cloud_devices = await _async_discover(self.api)
-        self.cloud_devices = cloud_devices
+        cloud_devices = await _async_discover(api)
+        # Keep the list only if no other login came during the request.
+        if self.api is api:
+            self.cloud_devices = cloud_devices
         return cloud_devices
 
     async def async_hello(
         self, gateway: str, is_metric: bool = True, language_tag: str = "en-US"
     ) -> AristonBaseDevice | None:
         """Get ariston device"""
-        if self.api is None:
-            _LOGGER.exception("Call async_connect() first")
+        api = self.api
+        if api is None:
+            _LOGGER.error("Call async_connect() first")
             return None
 
-        if len(self.cloud_devices) == 0:
-            await self.async_discover()
-
-        return _get_device(
-            self.cloud_devices, self.api, gateway, is_metric, language_tag
-        )
+        cloud_devices = self.cloud_devices or await self.async_discover()
+        return _get_device(cloud_devices, api, gateway, is_metric, language_tag)
 
 
 def _get_device(
@@ -95,7 +104,7 @@ def _get_device(
         None,
     )
     if device is None:
-        _LOGGER.exception("No device %s found.", gateway)
+        _LOGGER.error("No device %s found.", gateway)
         return None
 
     system_type = device.get(DeviceAttribute.SYS)
@@ -112,14 +121,14 @@ def _get_device(
             whe_type = device.get(VelisDeviceAttribute.WHE_TYPE, None)
             device_class = _MAP_WHE_TYPES_TO_CLASS.get(whe_type, None)
             if device_class is None:
-                _LOGGER.exception("Unsupported whe type %s", whe_type)
+                _LOGGER.error("Unsupported whe type %s", whe_type)
                 return None
             return device_class(api, device)
 
         case SystemType.BSB.value:
             return AristonBsbDevice(api, device)
         case _:
-            _LOGGER.exception("Unsupported system type %s", system_type)
+            _LOGGER.error("Unsupported system type %s", system_type)
             return None
 
 

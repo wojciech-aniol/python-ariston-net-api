@@ -11,9 +11,11 @@ from ariston_net_api.const import BsbZoneMode, DeviceAttribute
 GATEWAY = "GW0000000001"
 
 
-async def make_device(api: MagicMock, zone: dict[str, Any]) -> AristonBsbDevice:
+async def make_device(
+    api: MagicMock, zone: dict[str, Any], **data: Any
+) -> AristonBsbDevice:
     """Return a BSB device with one zone, loaded through the fake API."""
-    api.async_get_bsb_plant_data.return_value = {"zones": {"1": zone}}
+    api.async_get_bsb_plant_data.return_value = {"zones": {"1": zone}, **data}
     device = AristonBsbDevice(api, {DeviceAttribute.GW: GATEWAY})
     await device.async_update_state()
     return device
@@ -47,3 +49,51 @@ async def test_set_zone_mode_from_off(api: MagicMock) -> None:
         GATEWAY, 1, BsbZoneMode.TIME_PROGRAM, BsbZoneMode.OFF, False
     )
     assert device.get_zone_mode(1) is BsbZoneMode.TIME_PROGRAM
+
+
+@pytest.mark.parametrize(
+    ("name", "key"),
+    [("is_flame_on_value", "flame"), ("is_heating_pump_on_value", "hpOn")],
+)
+@pytest.mark.parametrize("value", [True, False, None])
+async def test_on_off_values(
+    api: MagicMock, name: str, key: str, value: bool | None
+) -> None:
+    """Flame and heat pump states are None when the key is missing."""
+    data = {} if value is None else {key: value}
+    device = await make_device(api, {}, **data)
+
+    assert getattr(device, name) is value
+
+
+@pytest.mark.parametrize(
+    ("zone", "expected"),
+    [
+        ({"hasRoomSens": False, "roomTemp": 0.0}, None),
+        ({"hasRoomSens": True, "roomTempError": True, "roomTemp": 0.0}, None),
+        ({"hasRoomSens": True, "roomTempError": False, "roomTemp": 0.0}, 0.0),
+        ({"hasRoomSens": True, "roomTemp": 21.5}, 21.5),
+        ({"roomTemp": 21.5}, 21.5),
+        ({}, None),
+    ],
+)
+async def test_get_measured_temp_value(
+    api: MagicMock, zone: dict[str, Any], expected: float | None
+) -> None:
+    """A zone without a working room sensor has no measured temperature."""
+    device = await make_device(api, zone)
+
+    assert device.get_measured_temp_value(1) == expected
+
+
+@pytest.mark.parametrize(
+    ("zone", "expected"),
+    [({"heatOrCoolReq": True}, True), ({"heatOrCoolReq": False}, False), ({}, None)],
+)
+async def test_get_zone_heat_request_value(
+    api: MagicMock, zone: dict[str, Any], expected: bool | None
+) -> None:
+    """The zone request comes from heatOrCoolReq."""
+    device = await make_device(api, zone)
+
+    assert device.get_zone_heat_request_value(zone_number=1) is expected
