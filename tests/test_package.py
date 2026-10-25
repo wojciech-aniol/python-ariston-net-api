@@ -2,11 +2,17 @@
 
 import logging
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ariston_net_api import Ariston, AristonBsbDevice, AristonLuxDevice, _get_device
+from ariston_net_api import (
+    Ariston,
+    AristonAPI,
+    AristonBsbDevice,
+    AristonLuxDevice,
+    _get_device,
+)
 from ariston_net_api.const import (
     DeviceAttribute,
     SystemType,
@@ -94,3 +100,51 @@ async def test_not_connected(caplog: pytest.LogCaptureFixture) -> None:
     record = ("ariston_net_api", logging.ERROR, "Call async_connect() first")
     assert caplog.record_tuples == [record, record]
     assert "NoneType" not in caplog.text
+
+
+@pytest.fixture
+def cloud(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Replace the login and device list calls of every AristonAPI."""
+    cloud = AsyncMock()
+    cloud.async_connect.return_value = True
+    cloud.async_get_detailed_devices.return_value = []
+    cloud.async_get_detailed_velis_devices.return_value = []
+    for name in (
+        "async_connect",
+        "async_get_detailed_devices",
+        "async_get_detailed_velis_devices",
+    ):
+        monkeypatch.setattr(AristonAPI, name, getattr(cloud, name))
+    return cloud
+
+
+async def test_failed_login_is_not_connected(cloud: AsyncMock) -> None:
+    """After a refused login the object is not connected, so it calls no cloud."""
+    ariston = Ariston()
+    await ariston.async_connect("user", "password")
+    await ariston.async_discover()
+    cloud.async_connect.return_value = False
+
+    assert await ariston.async_connect("user", "wrong") is False
+
+    assert ariston.api is None
+    assert ariston.cloud_devices == []
+    assert await ariston.async_discover() == []
+    assert cloud.async_get_detailed_devices.await_count == 1
+
+
+async def test_login_drops_earlier_devices(cloud: AsyncMock) -> None:
+    """A new login lists the devices again, as the account may differ."""
+    old = {DeviceAttribute.GW: "OTHER", DeviceAttribute.SYS: SystemType.BSB.value}
+    new = {DeviceAttribute.GW: GATEWAY, DeviceAttribute.SYS: SystemType.BSB.value}
+    cloud.async_get_detailed_devices.return_value = [old]
+    ariston = Ariston()
+    await ariston.async_connect("user", "password")
+    await ariston.async_discover()
+    cloud.async_get_detailed_devices.return_value = [new]
+
+    assert await ariston.async_connect("other", "password") is True
+
+    device = await ariston.async_hello(GATEWAY)
+    assert isinstance(device, AristonBsbDevice)
+    assert ariston.cloud_devices == [new]

@@ -43,7 +43,7 @@ class Ariston:
     """Ariston class"""
 
     def __init__(self) -> None:
-        self.api = None
+        self.api: AristonAPI | None = None
         self.cloud_devices: list[dict[str, Any]] = []
 
     async def async_connect(
@@ -54,8 +54,14 @@ class Ariston:
         user_agent: str = ARISTON_USER_AGENT,
     ) -> bool:
         """Connect to the ariston cloud"""
-        self.api = AristonAPI(username, password, api_url, user_agent)
-        return await self.api.async_connect()
+        # Devices of an earlier login may belong to another account.
+        self.api = None
+        self.cloud_devices = []
+        api = AristonAPI(username, password, api_url, user_agent)
+        if not await api.async_connect():
+            return False
+        self.api = api
+        return True
 
     async def async_discover(self) -> list[dict[str, Any]]:
         """Retreive ariston devices from the cloud"""
