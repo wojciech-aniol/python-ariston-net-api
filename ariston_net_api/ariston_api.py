@@ -42,8 +42,8 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 # The cloud answers a 429 with "Requests are blocked for 66 seconds".
-BLOCKED_FOR = re.compile(r"blocked for (\d+) seconds?", re.IGNORECASE)
-DEFAULT_BLOCK_SECONDS = 60
+_BLOCKED_FOR = re.compile(r"blocked for (\d+) seconds?", re.IGNORECASE)
+_DEFAULT_BLOCK_SECONDS = 60
 
 
 class ConnectionException(Exception):
@@ -78,9 +78,16 @@ class AristonAPI:
 
     def __block(self, content: str) -> None:
         """Stop requests for the time the cloud asks in a 429 answer"""
-        match = BLOCKED_FOR.search(content)
-        seconds = int(match.group(1)) if match else DEFAULT_BLOCK_SECONDS
-        self._blocked_until = time.monotonic() + seconds
+        if match := _BLOCKED_FOR.search(content):
+            seconds = int(match.group(1))
+            _LOGGER.debug("Cloud blocks requests for %s s", seconds)
+        else:
+            seconds = _DEFAULT_BLOCK_SECONDS
+            _LOGGER.warning(
+                "Unknown 429 answer, blocking requests for %s s: %s", seconds, content
+            )
+        # A later 429 must not shorten a longer block.
+        self._blocked_until = max(self._blocked_until, time.monotonic() + seconds)
 
     def connect(self) -> bool:
         """Login to ariston cloud and get token"""

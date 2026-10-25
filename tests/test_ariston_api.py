@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Self
@@ -59,6 +61,8 @@ class FakeSession:
         return None
 
     async def request(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
+        # Let other requests start, like a real network wait.
+        await asyncio.sleep(0)
         answer = self.cloud.next_answer()
         return SimpleNamespace(
             ok=answer.status < 400,
@@ -170,6 +174,61 @@ async def test_429_blocks_only_its_own_api_object(
     assert cloud.calls == 2
 
 
+async def test_later_429_does_not_shorten_the_block(
+    cloud: FakeCloud, clock: FakeClock
+) -> None:
+    """Two requests at once: the second, shorter 429 keeps the first block."""
+    cloud.answers = [Answer(429, b"Blocked for 300 seconds"), Answer(429)]
+    api = AristonAPI("user", "password")
+    await asyncio.gather(
+        api.async_get_devices(), api.async_get_devices(), return_exceptions=True
+    )
+
+    clock.now += 100
+    with pytest.raises(ConnectionException) as error:
+        await api.async_get_devices()
+    assert error.value.args == (429, "blocked locally for 200 s")
+    assert cloud.calls == 2
+
+
+async def test_unknown_429_answer_is_logged(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An answer without the block time is logged, to learn its text."""
+    cloud.answers = [Answer(429, b"Too many requests")]
+
+    with pytest.raises(ConnectionException):
+        await get_devices(AristonAPI("user", "password"), is_async)
+
+    assert caplog.record_tuples == [
+        (
+            "ariston_net_api.ariston_api",
+            logging.WARNING,
+            "Unknown 429 answer, blocking requests for 60 s: Too many requests",
+        )
+    ]
+
+
+async def test_login_inside_the_block_is_not_sent(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """A login raises the local 429 as its cause, which callers read."""
+    cloud.answers = [Answer(429), Answer(200, b'{"token": "x"}')]
+    api = AristonAPI("user", "password")
+    with pytest.raises(ConnectionException):
+        await get_devices(api, is_async)
+
+    with pytest.raises(ConnectionException) as error:
+        if is_async:
+            await api.async_connect()
+        else:
+            api.connect()
+
+    assert error.value.args == ()
+    assert error.value.__cause__.args[0] == 429
+    assert cloud.calls == 1
+
+
 @pytest.mark.parametrize("status", [400, 401, 403])
 async def test_4xx_is_not_retried(
     cloud: FakeCloud, clock: FakeClock, is_async: bool, status: int
@@ -196,5 +255,18 @@ async def test_5xx_is_retried_once(
         await get_devices(AristonAPI("user", "password"), is_async)
 
     assert error.value.args == (status,)
+    assert cloud.calls == 2
+    assert clock.sleeps == [5]
+
+
+async def test_5xx_retry_returns_the_second_answer(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """A retry that works gives its answer."""
+    cloud.answers = [Answer(500), Answer(200, b'[{"gw": "GW1"}]')]
+
+    devices = await get_devices(AristonAPI("user", "password"), is_async)
+
+    assert devices == [{"gw": "GW1"}]
     assert cloud.calls == 2
     assert clock.sleeps == [5]
