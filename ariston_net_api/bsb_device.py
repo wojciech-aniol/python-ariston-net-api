@@ -135,6 +135,11 @@ class AristonBsbDevice(AristonDevice):
         return self.data.get(BsbDeviceProperties.FLAME, False)
 
     @property
+    def is_heating_pump_on_value(self) -> bool | None:
+        """Get is heating pump on value"""
+        return self.data.get(BsbDeviceProperties.HP_ON)
+
+    @property
     def water_heater_current_temperature(self) -> float | None:
         """Method for getting current water heater temperature."""
         return self.data.get(BsbDeviceProperties.DHW_TEMP, None)
@@ -262,9 +267,13 @@ class AristonBsbDevice(AristonDevice):
         """Get zone reduced temp value"""
         return self.get_zone_ch_red_temp(zone).get(PropertyType.VALUE, 0)
 
-    def get_measured_temp_value(self, zone: int) -> int:
+    def get_measured_temp_value(self, zone: int) -> float | None:
         """Get zone measured temp value"""
-        return self.get_zone(zone).get(BsbZoneProperties.ROOM_TEMP, 0)
+        zone_data = self.get_zone(zone)
+        # Without a sensor the cloud sends roomTemp 0.0.
+        if zone_data.get(BsbZoneProperties.HAS_ROOM_SENS) is False:
+            return None
+        return zone_data.get(BsbZoneProperties.ROOM_TEMP, 0)
 
     def get_measured_temp_decimals(self, _) -> int:
         """Get zone measured temp decimals"""
