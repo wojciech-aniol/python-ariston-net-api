@@ -1056,12 +1056,11 @@ class AristonGalevoDevice(AristonDevice):
             self.energy_account = self._calc_energy_account()
 
     @property
-    def _metering_has_cooling(self) -> bool:
-        """Has cooling, as the web app sends it for metering"""
-        return (
-            self.plant_mode_options is not None
-            and self.is_plant_mode_options_contains_cooling
-        )
+    def _metering_has_cooling(self) -> bool | None:
+        """Has cooling, as the web app sends it for metering: None when not known"""
+        if self.plant_mode_options is None:
+            return None
+        return self.is_plant_mode_options_contains_cooling
 
     def _set_metering_data(self, data: dict[str, Any]) -> None:
         """Keep the not rounded kWh view only"""
@@ -1077,6 +1076,8 @@ class AristonGalevoDevice(AristonDevice):
 
     def update_metering(self) -> None:
         """Update the metering data (heat produced) from the web app"""
+        if len(self.features) == 0:
+            self.get_features()
         if self.has_metering is not True:
             return
         self._set_metering_data(
@@ -1087,6 +1088,8 @@ class AristonGalevoDevice(AristonDevice):
 
     async def async_update_metering(self) -> None:
         """Async update the metering data (heat produced) from the web app"""
+        if len(self.features) == 0:
+            await self.async_get_features()
         if self.has_metering is not True:
             return
         self._set_metering_data(
@@ -1104,20 +1107,17 @@ class AristonGalevoDevice(AristonDevice):
         self, tab: MeteringTab, series: MeteringSeries, period: MeteringPeriod
     ) -> float | None:
         """Get the sum of a metering row in kWh, None when there is no such row"""
-        rows = self.metering_data.get(MeteringData.AS_KWH_RAW, {}).get(
-            MeteringData.HISTOGRAM_DATA, []
-        )
-        for row in rows:
+        view = self.metering_data.get(MeteringData.AS_KWH_RAW) or {}
+        for row in view.get(MeteringData.HISTOGRAM_DATA) or []:
             if (
                 row.get(MeteringData.TAB) == tab
                 and row.get(MeteringData.SERIES) == series
                 and row.get(MeteringData.PERIOD) == period
             ):
-                return sum(
-                    (
-                        item.get(MeteringData.Y) or 0.0
-                        for item in row.get(MeteringData.ITEMS, [])
-                    ),
-                    0.0,
-                )
+                total = 0.0
+                for item in row.get(MeteringData.ITEMS) or []:
+                    value = item.get(MeteringData.Y)
+                    if isinstance(value, int | float):
+                        total += value
+                return total
         return None

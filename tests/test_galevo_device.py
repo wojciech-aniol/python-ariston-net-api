@@ -211,15 +211,83 @@ async def test_no_metering_sends_no_request(
         ([0, 1, 2, 5], False),
         ([0, 1, 2, 3, 5], True),
         ([0, 4, 5], True),
-        (None, False),
+        (None, None),
     ],
 )
 async def test_metering_has_cooling_from_plant_modes(
-    api: MagicMock, plant_modes: list[int] | None, has_cooling: bool
+    api: MagicMock, plant_modes: list[int] | None, has_cooling: bool | None
 ) -> None:
-    """The web app sends hasCooling when a plant mode can cool."""
+    """hasCooling is true when a plant mode can cool, None when not known."""
     device = await make_metering_device(api, plant_modes=plant_modes)
 
     await device.async_update_metering()
 
     api.async_get_metering_data.assert_awaited_once_with(GATEWAY, FEATURES, has_cooling)
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+async def test_metering_loads_missing_features(api: MagicMock, is_async: bool) -> None:
+    """Before the first state update the device reads its features first."""
+    api.get_features_for_device.return_value = FEATURES
+    api.async_get_features_for_device.return_value = FEATURES
+    api.get_metering_data.return_value = METERING
+    api.async_get_metering_data.return_value = METERING
+    device = AristonGalevoDevice(api, {DeviceAttribute.GW: GATEWAY})
+
+    await update_metering(device, is_async)
+
+    assert device.features == FEATURES
+    assert device.metering_data["asKwhRaw"] == METERING["asKwhRaw"]
+
+
+@pytest.mark.parametrize(
+    ("view", "expected"),
+    [
+        (None, None),
+        ({"histogramData": None}, None),
+        (
+            {"histogramData": [row("ProducedEnergy", "CurrentDay", "Heating", [])]},
+            0.0,
+        ),
+        (
+            {
+                "histogramData": [
+                    {
+                        **row("ProducedEnergy", "CurrentDay", "Heating", []),
+                        "items": None,
+                    }
+                ]
+            },
+            0.0,
+        ),
+        (
+            {
+                "histogramData": [
+                    {
+                        **row("ProducedEnergy", "CurrentDay", "Heating", []),
+                        "items": [{"x": "0", "y": None}, {"y": "1.5"}, {"y": 2.0}],
+                    }
+                ]
+            },
+            2.0,
+        ),
+    ],
+    ids=["no view", "no rows", "no bins", "null bins", "bad values"],
+)
+async def test_metering_total_with_missing_values(
+    api: MagicMock, view: dict[str, Any] | None, expected: float | None
+) -> None:
+    """Null or wrong cloud values never raise."""
+    device = await make_metering_device(api)
+    api.async_get_metering_data.return_value = {"asKwhRaw": view}
+
+    await device.async_update_metering()
+
+    assert (
+        device.get_metering_total(
+            MeteringTab.PRODUCED_ENERGY,
+            MeteringSeries.HEATING,
+            MeteringPeriod.CURRENT_DAY,
+        )
+        == expected
+    )

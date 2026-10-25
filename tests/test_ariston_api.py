@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Self
@@ -32,7 +34,7 @@ class FakeCloud:
     def __init__(self) -> None:
         self.answers: list[Answer] = []
         self.calls = 0
-        # Requests of the web sessions: url, json and all headers.
+        # Requests of the web sessions: url, json, all headers and redirects.
         self.web_requests: list[dict[str, Any]] = []
 
     def next_answer(self) -> Answer:
@@ -79,9 +81,15 @@ class FakeSyncSession:
         json: Any = None,
         headers: dict[str, str] | None = None,
         timeout: float | None = None,
+        allow_redirects: bool = True,
     ) -> SimpleNamespace:
         self.cloud.web_requests.append(
-            {"url": url, "json": json, "headers": self.headers | (headers or {})}
+            {
+                "url": url,
+                "json": json,
+                "headers": self.headers | (headers or {}),
+                "allow_redirects": allow_redirects,
+            }
         )
         answer = self.cloud.next_answer()
         self.cookies.update(answer.cookies)
@@ -107,16 +115,26 @@ class FakeSession:
         await asyncio.sleep(0)
         return self.response(self.cloud.next_answer())
 
+    @asynccontextmanager
     async def post(
-        self, url: str, json: Any = None, headers: dict[str, str] | None = None
-    ) -> SimpleNamespace:
+        self,
+        url: str,
+        json: Any = None,
+        headers: dict[str, str] | None = None,
+        allow_redirects: bool = True,
+    ) -> AsyncIterator[SimpleNamespace]:
         self.cloud.web_requests.append(
-            {"url": url, "json": json, "headers": self.headers | (headers or {})}
+            {
+                "url": url,
+                "json": json,
+                "headers": self.headers | (headers or {}),
+                "allow_redirects": allow_redirects,
+            }
         )
         await asyncio.sleep(0)
         answer = self.cloud.next_answer()
         self.cookie_jar.extend(SimpleNamespace(key=name) for name in answer.cookies)
-        return self.response(answer)
+        yield self.response(answer)
 
     @staticmethod
     def response(answer: Answer) -> SimpleNamespace:
@@ -371,6 +389,7 @@ async def test_metering_logs_in_to_the_web_app(
                 "language": "English_Us",
             },
             "headers": {"User-Agent": ARISTON_WEB_USER_AGENT},
+            "allow_redirects": False,
         },
         {
             "url": f"https://cloud.test/R2/PlantMetering/GetData/{GATEWAY}",
@@ -379,6 +398,7 @@ async def test_metering_logs_in_to_the_web_app(
                 "User-Agent": ARISTON_WEB_USER_AGENT,
                 "X-Requested-With": "XMLHttpRequest",
             },
+            "allow_redirects": False,
         },
     ]
 
@@ -441,7 +461,7 @@ async def test_metering_429_blocks_the_account(
 
     with pytest.raises(ConnectionException) as error:
         await get_metering_data(api, is_async)
-    assert error.value.args == (429, body.decode())
+    assert error.value.args == (429, "blocked for 66 seconds")
     with pytest.raises(ConnectionException) as error:
         await get_devices(api, is_async)
     assert error.value.args == (429, "blocked locally for 66 s")
@@ -454,3 +474,23 @@ async def test_metering_429_blocks_the_account(
         await get_metering_data(api, is_async)
     assert error.value.args == (429, "blocked locally for 60 s")
     assert cloud.calls == 3
+
+
+async def test_metering_429_page_is_not_logged(
+    cloud: FakeCloud,
+    clock: FakeClock,
+    is_async: bool,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A web 429 page can hold personal data, so it is never logged or raised."""
+    cloud.answers = [WEB_LOGIN, Answer(429, b"<html>John Doe</html>")]
+
+    with pytest.raises(ConnectionException) as error:
+        await get_metering_data(AristonAPI("user", "password"), is_async)
+
+    assert error.value.args == (429, "")
+    assert "John Doe" not in caplog.text
+    clock.now += 59
+    with pytest.raises(ConnectionException) as error:
+        await get_devices(AristonAPI("user", "password"), is_async)
+    assert error.value.args == (429, "blocked locally for 1 s")

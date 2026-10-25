@@ -103,6 +103,18 @@ class AristonAPI:
             _blocked_until.get(self.__account, 0.0), time.monotonic() + seconds
         )
 
+    def __raise_blocked(
+        self, content: bytes, only_block_time: bool = False
+    ) -> NoReturn:
+        """Block the account after a 429 answer and raise"""
+        text = content.decode(errors="replace")
+        if only_block_time:
+            # A web page can hold personal data: keep only the block time.
+            match = _BLOCKED_FOR.search(text)
+            text = match.group(0) if match else ""
+        self.__block(text)
+        raise ConnectionException(429, text)
+
     def connect(self) -> bool:
         """Login to ariston cloud and get token"""
 
@@ -518,7 +530,7 @@ class AristonAPI:
         return []
 
     def get_metering_data(
-        self, gw_id: str, features: dict[str, Any], has_cooling: bool
+        self, gw_id: str, features: dict[str, Any], has_cooling: bool | None
     ) -> dict[str, Any]:
         """Get the metering data of the web app, with heat produced"""
         with requests.Session() as session:
@@ -548,9 +560,7 @@ class AristonAPI:
     def __web_error(self, status: int, content: bytes) -> NoReturn:
         """Raise for a web app answer that is not ok"""
         if status == 429:
-            text = content.decode(errors="replace")
-            self.__block(text)
-            raise ConnectionException(status, text)
+            self.__raise_blocked(content, only_block_time=True)
         raise ConnectionException(status)
 
     @staticmethod
@@ -576,9 +586,12 @@ class AristonAPI:
     ) -> bytes:
         """POST to the web app in a cookie session"""
         self.__check_blocked()
-        # Never log the answers: the login answer is a page with personal data.
+        # Never log the answers: web pages hold personal data.
         _LOGGER.debug("Web request POST %s", url)
-        response = session.post(url, json=body, headers=headers, timeout=30)
+        # The login answer sets the cookie; the page it redirects to is not needed.
+        response = session.post(
+            url, json=body, headers=headers, timeout=30, allow_redirects=False
+        )
         if not response.ok:
             self.__web_error(response.status_code, response.content)
         return response.content
@@ -618,9 +631,7 @@ class AristonAPI:
                 case 404:
                     return None
                 case 429:
-                    content = response.content.decode(errors="replace")
-                    self.__block(content)
-                    raise ConnectionException(response.status_code, content)
+                    self.__raise_blocked(response.content)
                 case status if (status == 408 or status >= 500) and not is_retry:
                     time.sleep(5)
                     return self.__request(method, path, params, body, True)
@@ -628,9 +639,9 @@ class AristonAPI:
                     raise ConnectionException(response.status_code)
 
         if len(response.content) > 0:
-            json = response.json()
-            _LOGGER.debug("Response %s", json)
-            return json
+            answer = response.json()
+            _LOGGER.debug("Response %s", answer)
+            return answer
 
         return None
 
@@ -1047,7 +1058,7 @@ class AristonAPI:
         return []
 
     async def async_get_metering_data(
-        self, gw_id: str, features: dict[str, Any], has_cooling: bool
+        self, gw_id: str, features: dict[str, Any], has_cooling: bool | None
     ) -> dict[str, Any]:
         """Async get the metering data of the web app, with heat produced"""
         async with aiohttp.ClientSession(
@@ -1079,8 +1090,10 @@ class AristonAPI:
         """Async POST to the web app in a cookie session"""
         self.__check_blocked()
         _LOGGER.debug("Web request POST %s", url)
-        response = await session.post(url, json=body, headers=headers)
-        content = await response.read()
+        async with session.post(
+            url, json=body, headers=headers, allow_redirects=False
+        ) as response:
+            content = await response.read()
         if not response.ok:
             self.__web_error(response.status, content)
         return content
@@ -1131,11 +1144,7 @@ class AristonAPI:
                     case 404:
                         return None
                     case 429:
-                        content = (await response.content.read()).decode(
-                            errors="replace"
-                        )
-                        self.__block(content)
-                        raise ConnectionException(response.status, content)
+                        self.__raise_blocked(await response.content.read())
                     case status if (status == 408 or status >= 500) and not is_retry:
                         await asyncio.sleep(5)
                         return await self.__async_request(
@@ -1145,9 +1154,9 @@ class AristonAPI:
                         raise ConnectionException(response.status)
 
             if response.content_length and response.content_length > 0:
-                json = await response.json()
-                _LOGGER.debug("Response %s", json)
-                return json
+                answer = await response.json()
+                _LOGGER.debug("Response %s", answer)
+                return answer
 
             return None
 
