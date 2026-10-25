@@ -1,5 +1,6 @@
 """Tests for the package entry points."""
 
+import asyncio
 import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -11,6 +12,7 @@ from ariston_net_api import (
     AristonAPI,
     AristonBsbDevice,
     AristonLuxDevice,
+    ConnectionException,
     _get_device,
 )
 from ariston_net_api.const import (
@@ -21,6 +23,7 @@ from ariston_net_api.const import (
 )
 
 GATEWAY = "GW0000000001"
+BSB_DEVICE = {DeviceAttribute.GW: GATEWAY, DeviceAttribute.SYS: SystemType.BSB.value}
 
 
 @pytest.mark.parametrize(
@@ -120,6 +123,7 @@ def cloud(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 async def test_failed_login_is_not_connected(cloud: AsyncMock) -> None:
     """After a refused login the object is not connected, so it calls no cloud."""
+    cloud.async_get_detailed_devices.return_value = [BSB_DEVICE]
     ariston = Ariston()
     await ariston.async_connect("user", "password")
     await ariston.async_discover()
@@ -128,23 +132,59 @@ async def test_failed_login_is_not_connected(cloud: AsyncMock) -> None:
     assert await ariston.async_connect("user", "wrong") is False
 
     assert ariston.api is None
-    assert ariston.cloud_devices == []
     assert await ariston.async_discover() == []
+    assert await ariston.async_hello(GATEWAY) is None
     assert cloud.async_get_detailed_devices.await_count == 1
 
 
-async def test_login_drops_earlier_devices(cloud: AsyncMock) -> None:
-    """A new login lists the devices again, as the account may differ."""
-    old = {DeviceAttribute.GW: "OTHER", DeviceAttribute.SYS: SystemType.BSB.value}
-    new = {DeviceAttribute.GW: GATEWAY, DeviceAttribute.SYS: SystemType.BSB.value}
-    cloud.async_get_detailed_devices.return_value = [old]
+async def test_login_error_keeps_earlier_login(cloud: AsyncMock) -> None:
+    """A cloud error during a new login keeps the working one."""
+    ariston = Ariston()
+    await ariston.async_connect("user", "password")
+    api = ariston.api
+    cloud.async_connect.side_effect = ConnectionException()
+
+    with pytest.raises(ConnectionException):
+        await ariston.async_connect("user", "password")
+
+    assert ariston.api is api
+
+
+@pytest.mark.parametrize(("username", "discover_count"), [("user", 1), ("other", 2)])
+async def test_login_lists_devices_again_for_new_account(
+    cloud: AsyncMock, username: str, discover_count: int
+) -> None:
+    """A login to another account drops the device list; the same one keeps it."""
+    cloud.async_get_detailed_devices.return_value = [BSB_DEVICE]
     ariston = Ariston()
     await ariston.async_connect("user", "password")
     await ariston.async_discover()
-    cloud.async_get_detailed_devices.return_value = [new]
 
-    assert await ariston.async_connect("other", "password") is True
+    assert await ariston.async_connect(username, "password") is True
 
-    device = await ariston.async_hello(GATEWAY)
-    assert isinstance(device, AristonBsbDevice)
-    assert ariston.cloud_devices == [new]
+    assert isinstance(await ariston.async_hello(GATEWAY), AristonBsbDevice)
+    assert cloud.async_get_detailed_devices.await_count == discover_count
+
+
+async def test_login_during_hello(cloud: AsyncMock) -> None:
+    """A login during a running hello does not change what that hello uses."""
+    ariston = Ariston()
+    await ariston.async_connect("user", "password")
+    api = ariston.api
+    answer = asyncio.Event()
+
+    async def devices() -> list[dict[str, Any]]:
+        await answer.wait()
+        return [BSB_DEVICE]
+
+    cloud.async_get_detailed_devices.side_effect = devices
+    hello = asyncio.create_task(ariston.async_hello(GATEWAY))
+    await asyncio.sleep(0)
+    cloud.async_connect.return_value = False
+    await ariston.async_connect("other", "wrong")
+    answer.set()
+    device = await hello
+
+    assert device is not None
+    assert device.api is api
+    assert ariston.cloud_devices == []

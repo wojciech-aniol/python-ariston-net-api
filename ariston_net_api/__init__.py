@@ -45,6 +45,7 @@ class Ariston:
     def __init__(self) -> None:
         self.api: AristonAPI | None = None
         self.cloud_devices: list[dict[str, Any]] = []
+        self._account: tuple[str, str] | None = None
 
     async def async_connect(
         self,
@@ -54,38 +55,40 @@ class Ariston:
         user_agent: str = ARISTON_USER_AGENT,
     ) -> bool:
         """Connect to the ariston cloud"""
-        # Devices of an earlier login may belong to another account.
-        self.api = None
-        self.cloud_devices = []
         api = AristonAPI(username, password, api_url, user_agent)
+        # A cloud error raises here and keeps the earlier login.
         if not await api.async_connect():
+            self.api = None
             return False
+        if self._account != (api_url, username):
+            self._account = (api_url, username)
+            self.cloud_devices = []
         self.api = api
         return True
 
     async def async_discover(self) -> list[dict[str, Any]]:
         """Retreive ariston devices from the cloud"""
-        if self.api is None:
+        api = self.api
+        if api is None:
             _LOGGER.error("Call async_connect() first")
             return []
-        cloud_devices = await _async_discover(self.api)
-        self.cloud_devices = cloud_devices
+        cloud_devices = await _async_discover(api)
+        # Keep the list only if no other login came during the request.
+        if self.api is api:
+            self.cloud_devices = cloud_devices
         return cloud_devices
 
     async def async_hello(
         self, gateway: str, is_metric: bool = True, language_tag: str = "en-US"
     ) -> AristonBaseDevice | None:
         """Get ariston device"""
-        if self.api is None:
+        api = self.api
+        if api is None:
             _LOGGER.error("Call async_connect() first")
             return None
 
-        if len(self.cloud_devices) == 0:
-            await self.async_discover()
-
-        return _get_device(
-            self.cloud_devices, self.api, gateway, is_metric, language_tag
-        )
+        cloud_devices = self.cloud_devices or await self.async_discover()
+        return _get_device(cloud_devices, api, gateway, is_metric, language_tag)
 
 
 def _get_device(
