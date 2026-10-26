@@ -905,13 +905,24 @@ class AristonGalevoDevice(AristonDevice):
 
     def set_comfort_temp(self, temp: float, zone: int):
         """Set comfort temp"""
+        aims_at_comfort = self._aims_at_comfort_temp(zone)
         self.set_item_by_id(ThermostatProperties.ZONE_COMFORT_TEMP, temp, zone)
+        if aims_at_comfort:
+            self._set_item_by_id(ThermostatProperties.ZONE_DESIRED_TEMP, temp, zone)
 
     async def async_set_comfort_temp(self, temp: float, zone: int):
         """Async set comfort temp"""
+        aims_at_comfort = self._aims_at_comfort_temp(zone)
         await self.async_set_item_by_id(
             ThermostatProperties.ZONE_COMFORT_TEMP, temp, zone
         )
+        if aims_at_comfort:
+            self._set_item_by_id(ThermostatProperties.ZONE_DESIRED_TEMP, temp, zone)
+
+    def _aims_at_comfort_temp(self, zone: int) -> bool:
+        """Return True if the zone target is its comfort temp, so a new one moves it."""
+        target = self.get_target_temp_value(zone)
+        return target is not None and target == self.get_comfort_temp_value(zone)
 
     def set_heating_flow_temp(self, temp: float, zone: int):
         """Set heating flow temp"""

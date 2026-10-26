@@ -66,6 +66,50 @@ def test_get_zone_heat_request_value(api: MagicMock) -> None:
     assert device.get_zone_heat_request_value(3) is None
 
 
+def zone_temps(desired: float, comfort: float) -> list[dict[str, Any]]:
+    """Zone 1 target and comfort temps, as the cloud sends them."""
+    return [
+        {"id": "ZoneDesiredTemp", "zone": 1, "value": desired},
+        {"id": "ZoneComfortTemp", "zone": 1, "value": comfort},
+    ]
+
+
+async def set_comfort_temp(
+    device: AristonGalevoDevice, temp: float, is_async: bool
+) -> None:
+    """Set the zone 1 comfort temp with the sync or the async path."""
+    if is_async:
+        await device.async_set_comfort_temp(temp, 1)
+    else:
+        device.set_comfort_temp(temp, 1)
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+async def test_set_comfort_temp_moves_target_at_comfort(
+    api: MagicMock, is_async: bool
+) -> None:
+    """A zone that aims at its comfort temp aims at the new one."""
+    device = make_device(api, zone_temps(desired=20.0, comfort=20.0))
+
+    await set_comfort_temp(device, 22.0, is_async)
+
+    assert device.get_comfort_temp_value(1) == 22.0
+    assert device.get_target_temp_value(1) == 22.0
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+async def test_set_comfort_temp_keeps_other_target(
+    api: MagicMock, is_async: bool
+) -> None:
+    """A zone that aims at another temp, like the economy one, keeps it."""
+    device = make_device(api, zone_temps(desired=19.0, comfort=20.0))
+
+    await set_comfort_temp(device, 22.0, is_async)
+
+    assert device.get_comfort_temp_value(1) == 22.0
+    assert device.get_target_temp_value(1) == 19.0
+
+
 FEATURES = {"hasMetering": True, "zones": [{"num": 1}]}
 
 
