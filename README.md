@@ -2,7 +2,7 @@
 
 # python-ariston-net-api
 A maintained fork of [fustom/python-ariston-api](https://github.com/fustom/python-ariston-api)
-for the [Ariston NET](https://github.com/wojciech-aniol/ariston-remotethermo-home-assistant-v3)
+for the [Ariston NET](https://github.com/wojciech-aniol/ariston-net-home-assistant)
 Home Assistant integration. The package is `ariston-net-api` and the module is `ariston_net_api`,
 so it can live next to fustom's `ariston` package:
 ```python3
