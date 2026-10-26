@@ -2,7 +2,7 @@
 
 Python library for the Ariston NET cloud: package `ariston-net-api`, module `ariston_net_api`.
 A maintained fork of fustom/python-ariston-api 0.19.9 for the Ariston NET Home Assistant
-integration (`wojciech-aniol/ariston-remotethermo-home-assistant-v3`). Code in
+integration (`wojciech-aniol/ariston-net-home-assistant`). Code in
 `ariston_net_api/`, tests in `tests/`.
 
 ## Commands
