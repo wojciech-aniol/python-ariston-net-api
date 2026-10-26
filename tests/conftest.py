@@ -19,4 +19,5 @@ def api() -> MagicMock:
     api.async_set_bsb_zone_mode = AsyncMock()
     api.async_set_nuos_mode = AsyncMock()
     api.async_set_nuos_temperature = AsyncMock()
+    api.async_set_property = AsyncMock()
     return api
