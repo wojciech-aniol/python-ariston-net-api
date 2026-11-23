@@ -182,6 +182,7 @@ def cloud(monkeypatch: pytest.MonkeyPatch) -> FakeCloud:
     cloud = FakeCloud()
     monkeypatch.setattr(ariston_api, "_blocked_until", {})
     monkeypatch.setattr(ariston_api, "_data_item_parts", {})
+    monkeypatch.setattr(ariston_api, "_full_item_failures", {})
     monkeypatch.setattr(ariston_api.requests, "request", cloud.request)
     monkeypatch.setattr(ariston_api.requests, "Session", cloud.sync_session)
     monkeypatch.setattr(ariston_api.aiohttp, "ClientSession", cloud.session)
@@ -546,17 +547,49 @@ async def test_properties_without_error_send_one_request(
 async def test_properties_500_asks_in_halves(
     cloud: FakeCloud, clock: FakeClock, is_async: bool
 ) -> None:
-    """After a 500 the halves are asked and merged, and kept for later reads."""
+    """After a 500 the halves are asked and merged."""
     first, second = split_items(2)
     cloud.answers = [Answer(500), Answer(500), items_answer(first)]
     cloud.answers.append(items_answer(second))
-    api = AristonAPI("user", "password")
 
-    properties = await get_properties(api, is_async)
+    properties = await get_properties(AristonAPI("user", "password"), is_async)
 
     assert item_ids(properties) == [item["id"] for item in PROPERTY_ITEMS]
     assert asked_sizes(cloud)[2:] == [len(first), len(second)]
     assert cloud.calls == 4
+
+
+async def test_properties_one_500_does_not_keep_parts(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """After one read with a 500 the next read asks for all items again."""
+    first, second = split_items(2)
+    cloud.answers = [Answer(500), Answer(500), items_answer(first)]
+    cloud.answers += [items_answer(second), items_answer(PROPERTY_ITEMS)]
+    cloud.answers += [Answer(500), Answer(500), items_answer(first)]
+    cloud.answers += [items_answer(second), items_answer(PROPERTY_ITEMS)]
+    api = AristonAPI("user", "password")
+
+    for _ in range(2):
+        await get_properties(api, is_async)
+        cloud.bodies.clear()
+        await get_properties(api, is_async)
+
+        assert asked_sizes(cloud) == [len(PROPERTY_ITEMS)]
+        cloud.bodies.clear()
+
+
+async def test_properties_two_500_reads_keep_parts(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """After two reads in a row with a 500 the halves are kept for an hour."""
+    first, second = split_items(2)
+    halves = [items_answer(first), items_answer(second)]
+    cloud.answers = [Answer(500), Answer(500), *halves] * 2
+    api = AristonAPI("user", "password")
+
+    await get_properties(api, is_async)
+    await get_properties(api, is_async)
 
     cloud.bodies.clear()
     cloud.answers = [items_answer(first), items_answer(second)]
@@ -583,6 +616,7 @@ async def test_properties_part_500_is_split_again(
     second_a, second_b = ariston_api._split(second, 2)
     cloud.answers = [Answer(500), Answer(500), items_answer(first), Answer(500)]
     cloud.answers += [items_answer(second_a), Answer(500), Answer(200)]
+    ariston_api._full_item_failures[(ariston_api.ARISTON_API_URL, GATEWAY)] = 1
 
     properties = await get_properties(AristonAPI("user", "password"), is_async)
 

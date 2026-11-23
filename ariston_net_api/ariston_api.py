@@ -60,8 +60,13 @@ _AJAX_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
 # the parts are used before the full request is tried again.
 _MAX_PART_REQUESTS = 4
 _PARTS_SECONDS = 3600
+# The parts are kept only after this many reads in a row with a 500 for
+# the full request. One 500 can be a short cloud problem.
+_KEEP_PARTS_AFTER = 2
 # Part count and its end (time.monotonic) per API URL and gateway.
 _data_item_parts: dict[tuple[str, str], tuple[int, float]] = {}
+# Reads in a row with a 500 for the full request, per API URL and gateway.
+_full_item_failures: dict[tuple[str, str], int] = {}
 
 
 class ConnectionException(Exception):
@@ -95,8 +100,10 @@ class _DataItemParts:
         items: list[Any],
         count: int,
         error: ConnectionException | None,
+        keep: bool = True,
     ) -> None:
         self.key = key
+        self.keep = keep
         self.items = items
         self.first_error: ConnectionException | None = error
         self.queue = deque((part, count) for part in _split(items, count))
@@ -113,6 +120,17 @@ class _DataItemParts:
             return count
         _data_item_parts.pop(key, None)
         return 1
+
+    @staticmethod
+    def full_failed(key: tuple[str, str]) -> bool:
+        """Count a 500 for the full request, tell if the parts are kept"""
+        _full_item_failures[key] = _full_item_failures.get(key, 0) + 1
+        return _full_item_failures[key] >= _KEEP_PARTS_AFTER
+
+    @staticmethod
+    def full_answered(key: tuple[str, str]) -> None:
+        """Forget the 500s of the full request"""
+        _full_item_failures.pop(key, None)
 
     def next_part(self) -> tuple[list[Any], int] | None:
         """Get the next part to ask for, None when done"""
@@ -143,15 +161,16 @@ class _DataItemParts:
         if not self.answers:
             _data_item_parts.pop(self.key, None)
             raise self.first_error or ConnectionException(500)
-        until = _data_item_parts.get(self.key, (0, 0.0))[1]
-        if until <= time.monotonic():
-            until = time.monotonic() + _PARTS_SECONDS
-            _LOGGER.warning(
-                "Data items failed with 500, asking in %s parts for %s s",
-                self.answered_count,
-                _PARTS_SECONDS,
-            )
-        _data_item_parts[self.key] = (self.answered_count, until)
+        if self.keep:
+            until = _data_item_parts.get(self.key, (0, 0.0))[1]
+            if until <= time.monotonic():
+                until = time.monotonic() + _PARTS_SECONDS
+                _LOGGER.warning(
+                    "Data items failed with 500, asking in %s parts for %s s",
+                    self.answered_count,
+                    _PARTS_SECONDS,
+                )
+            _data_item_parts[self.key] = (self.answered_count, until)
         if missing := len(self.items) - self.answered_items:
             _LOGGER.warning("%s of %s data items failed", missing, len(self.items))
         return {
@@ -336,17 +355,22 @@ class AristonAPI:
         key = (self.__api_url, gw_id)
         count = _DataItemParts.saved_count(key)
         error = None
+        keep = True
         if count == 1:
             try:
-                return (
-                    self._post(path, _data_items_body(items, features, culture)) or {}
+                properties = self._post(
+                    path, _data_items_body(items, features, culture)
                 )
             except ConnectionException as full_error:
                 if error_status(full_error) != 500:
                     raise
                 error = full_error
                 count = 2
-        parts = _DataItemParts(key, items, count, error)
+                keep = _DataItemParts.full_failed(key)
+            else:
+                _DataItemParts.full_answered(key)
+                return properties or {}
+        parts = _DataItemParts(key, items, count, error, keep)
         while next_part := parts.next_part():
             part, part_count = next_part
             try:
@@ -892,20 +916,22 @@ class AristonAPI:
         key = (self.__api_url, gw_id)
         count = _DataItemParts.saved_count(key)
         error = None
+        keep = True
         if count == 1:
             try:
-                return (
-                    await self._async_post(
-                        path, _data_items_body(items, features, culture)
-                    )
-                    or {}
+                properties = await self._async_post(
+                    path, _data_items_body(items, features, culture)
                 )
             except ConnectionException as full_error:
                 if error_status(full_error) != 500:
                     raise
                 error = full_error
                 count = 2
-        parts = _DataItemParts(key, items, count, error)
+                keep = _DataItemParts.full_failed(key)
+            else:
+                _DataItemParts.full_answered(key)
+                return properties or {}
+        parts = _DataItemParts(key, items, count, error, keep)
         while next_part := parts.next_part():
             part, part_count = next_part
             try:
