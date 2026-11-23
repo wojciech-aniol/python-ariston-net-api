@@ -34,6 +34,8 @@ class FakeCloud:
     def __init__(self) -> None:
         self.answers: list[Answer] = []
         self.calls = 0
+        # JSON bodies of the API requests.
+        self.bodies: list[Any] = []
         # Requests of the web sessions: url, json, all headers and redirects.
         self.web_requests: list[dict[str, Any]] = []
 
@@ -42,6 +44,7 @@ class FakeCloud:
         return self.answers.pop(0)
 
     def request(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
+        self.bodies.append(kwargs.get("json"))
         return sync_response(self.next_answer())
 
     def session(self, **kwargs: Any) -> FakeSession:
@@ -113,6 +116,7 @@ class FakeSession:
     async def request(self, *args: Any, **kwargs: Any) -> SimpleNamespace:
         # Let other requests start, like a real network wait.
         await asyncio.sleep(0)
+        self.cloud.bodies.append(kwargs.get("json"))
         return self.response(self.cloud.next_answer())
 
     @asynccontextmanager
@@ -177,6 +181,7 @@ def cloud(monkeypatch: pytest.MonkeyPatch) -> FakeCloud:
     """Replace the network of both request paths with a fake cloud."""
     cloud = FakeCloud()
     monkeypatch.setattr(ariston_api, "_blocked_until", {})
+    monkeypatch.setattr(ariston_api, "_data_item_parts", {})
     monkeypatch.setattr(ariston_api.requests, "request", cloud.request)
     monkeypatch.setattr(ariston_api.requests, "Session", cloud.sync_session)
     monkeypatch.setattr(ariston_api.aiohttp, "ClientSession", cloud.session)
@@ -494,3 +499,146 @@ async def test_metering_429_page_is_not_logged(
     with pytest.raises(ConnectionException) as error:
         await get_devices(AristonAPI("user", "password"), is_async)
     assert error.value.args == (429, "blocked locally for 1 s")
+
+
+PROPERTY_FEATURES = {"zones": [{"num": 1}]}
+PROPERTY_ITEMS = AristonAPI.get_items(PROPERTY_FEATURES)
+
+
+def items_answer(items: list[dict[str, Any]]) -> Answer:
+    """A data items answer with a value for each asked item."""
+    answer = {"items": [{"id": item["id"], "value": 1} for item in items]}
+    return Answer(200, json.dumps(answer).encode())
+
+
+def item_ids(properties: dict[str, Any]) -> list[str]:
+    return [item["id"] for item in properties["items"]]
+
+
+def asked_sizes(cloud: FakeCloud) -> list[int]:
+    return [len(body["items"]) for body in cloud.bodies]
+
+
+async def get_properties(api: AristonAPI, is_async: bool) -> dict[str, Any]:
+    """Read the data items of a GALEVO gateway."""
+    if is_async:
+        return await api.async_get_properties(GATEWAY, PROPERTY_FEATURES, "en-US", "si")
+    return api.get_properties(GATEWAY, PROPERTY_FEATURES, "en-US", "si")
+
+
+def split_items(count: int) -> list[list[dict[str, Any]]]:
+    return ariston_api._split(PROPERTY_ITEMS, count)
+
+
+async def test_properties_without_error_send_one_request(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """A read without an error sends only the full request."""
+    cloud.answers = [items_answer(PROPERTY_ITEMS)]
+
+    properties = await get_properties(AristonAPI("user", "password"), is_async)
+
+    assert cloud.calls == 1
+    assert asked_sizes(cloud) == [len(PROPERTY_ITEMS)]
+    assert item_ids(properties) == [item["id"] for item in PROPERTY_ITEMS]
+
+
+async def test_properties_500_asks_in_halves(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """After a 500 the halves are asked and merged, and kept for later reads."""
+    first, second = split_items(2)
+    cloud.answers = [Answer(500), Answer(500), items_answer(first)]
+    cloud.answers.append(items_answer(second))
+    api = AristonAPI("user", "password")
+
+    properties = await get_properties(api, is_async)
+
+    assert item_ids(properties) == [item["id"] for item in PROPERTY_ITEMS]
+    assert asked_sizes(cloud)[2:] == [len(first), len(second)]
+    assert cloud.calls == 4
+
+    cloud.bodies.clear()
+    cloud.answers = [items_answer(first), items_answer(second)]
+    clock.now += 3599
+
+    await get_properties(api, is_async)
+
+    assert asked_sizes(cloud) == [len(first), len(second)]
+
+    cloud.bodies.clear()
+    cloud.answers = [items_answer(PROPERTY_ITEMS)]
+    clock.now += 1
+
+    await get_properties(api, is_async)
+
+    assert asked_sizes(cloud) == [len(PROPERTY_ITEMS)]
+
+
+async def test_properties_part_500_is_split_again(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failed half is split again, within 4 part requests and no retries."""
+    first, second = split_items(2)
+    second_a, second_b = ariston_api._split(second, 2)
+    cloud.answers = [Answer(500), Answer(500), items_answer(first), Answer(500)]
+    cloud.answers += [items_answer(second_a), Answer(500), Answer(200)]
+
+    properties = await get_properties(AristonAPI("user", "password"), is_async)
+
+    assert item_ids(properties) == [item["id"] for item in first + second_a]
+    assert asked_sizes(cloud)[2:] == [len(first), len(second)] + [
+        len(second_a),
+        len(second_b),
+    ]
+    assert cloud.calls == 6
+    assert clock.sleeps == [5]
+    assert f"{len(second_b)} of {len(PROPERTY_ITEMS)} data items failed" in caplog.text
+    assert ariston_api._data_item_parts[(ariston_api.ARISTON_API_URL, GATEWAY)][0] == 4
+
+
+async def test_properties_all_parts_fail(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool
+) -> None:
+    """When no part answers, the first error is raised and nothing is kept."""
+    cloud.answers = [Answer(500)] * 6 + [items_answer(PROPERTY_ITEMS)]
+    api = AristonAPI("user", "password")
+
+    with pytest.raises(ConnectionException) as error:
+        await get_properties(api, is_async)
+
+    assert error.value.args == (500,)
+    assert cloud.calls == 6
+    assert ariston_api._data_item_parts == {}
+
+    await get_properties(api, is_async)
+
+    assert asked_sizes(cloud)[-1] == len(PROPERTY_ITEMS)
+
+
+@pytest.mark.parametrize("status", [401, 403, 502])
+async def test_properties_other_error_is_not_split(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool, status: int
+) -> None:
+    """Only a 500 starts the part requests."""
+    cloud.answers = [Answer(status)] * 2 + [Answer(200)]
+
+    with pytest.raises(ConnectionException) as error:
+        await get_properties(AristonAPI("user", "password"), is_async)
+
+    assert error.value.args == (status,)
+    assert cloud.calls == (1 if status < 500 else 2)
+
+
+@pytest.mark.parametrize("status", [401, 429])
+async def test_properties_part_refused_raises(
+    cloud: FakeCloud, clock: FakeClock, is_async: bool, status: int
+) -> None:
+    """A part answered with 4xx raises at once."""
+    cloud.answers = [Answer(500), Answer(500), Answer(status), Answer(200)]
+
+    with pytest.raises(ConnectionException) as error:
+        await get_properties(AristonAPI("user", "password"), is_async)
+
+    assert error.value.args[0] == status
+    assert cloud.calls == 3

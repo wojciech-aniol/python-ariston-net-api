@@ -5,7 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ariston_net_api.ariston_api import ConnectionException
 from ariston_net_api.const import (
+    ConsumptionTimeInterval,
+    ConsumptionType,
     DeviceAttribute,
     MeteringPeriod,
     MeteringSeries,
@@ -335,3 +338,101 @@ async def test_metering_total_with_missing_values(
         )
         == expected
     )
+
+
+@pytest.mark.parametrize("sequence", [{"v": []}, {}], ids=["empty", "missing"])
+def test_consumption_without_values_is_none(
+    api: MagicMock, sequence: dict[str, Any]
+) -> None:
+    """A consumption sequence without values gives None."""
+    device = make_device(api, [])
+    device.consumptions_sequences = [
+        {
+            "k": ConsumptionType.CENTRAL_HEATING_TOTAL_ENERGY.value,
+            "p": ConsumptionTimeInterval.LAST_DAY.value,
+        }
+        | sequence
+    ]
+
+    assert device.central_heating_total_energy_consumption is None
+    device._set_energy_features()
+    assert device.custom_features["CENTRAL_HEATING_TOTAL_ENERGY"] is False
+
+
+OLD_MENU = [{"id": 124, "value": 31.0, "unit": "°C"}]
+
+
+async def update_state(device: AristonGalevoDevice, is_async: bool) -> None:
+    """Update the state with the sync or the async path."""
+    if is_async:
+        await device.async_update_state()
+    else:
+        device.update_state()
+
+
+def make_state_device(api: MagicMock, menu_error: Exception) -> AristonGalevoDevice:
+    """Return a GALEVO device whose menu request fails."""
+    properties = {"items": [{"id": "IsFlameOn", "zone": 0, "value": 1.0}]}
+    api.get_properties.return_value = properties
+    api.async_get_properties.return_value = properties
+    api.get_menu_items.side_effect = menu_error
+    api.async_get_menu_items.side_effect = menu_error
+    device = AristonGalevoDevice(api, {DeviceAttribute.GW: GATEWAY})
+    device.features = {"zones": [{"num": 1}]}
+    device.menu_items = OLD_MENU
+    return device
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize("status", [500, 550])
+async def test_menu_server_error_keeps_last_items(
+    api: MagicMock, is_async: bool, status: int
+) -> None:
+    """A menu server error keeps the last menu items and the new data."""
+    device = make_state_device(api, ConnectionException(status))
+
+    await update_state(device, is_async)
+
+    assert device.menu_items == OLD_MENU
+    assert device.ch_return_temp_value == 31.0
+    assert device.is_flame_on_value is True
+
+
+@pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize(
+    "error",
+    [ConnectionException(401), ConnectionException("Invalid token")],
+    ids=["401", "no-status"],
+)
+async def test_menu_other_error_raises(
+    api: MagicMock, is_async: bool, error: Exception
+) -> None:
+    """Other menu errors still fail the update."""
+    device = make_state_device(api, error)
+
+    with pytest.raises(ConnectionException):
+        await update_state(device, is_async)
+
+
+@pytest.mark.parametrize(
+    ("item", "expected"),
+    [
+        ({"value": 41.5}, 41.5),
+        ({"value": 0.0}, 0.0),
+        ({"value": 1.0, "max": 1.0}, 1.0),
+        ({"value": 3276.0, "max": 3276.0}, None),
+        ({"value": 3276.7, "max": 3276.7}, None),
+        ({"value": -3276.8, "min": -3276.8}, None),
+        ({"value": -3277.0, "min": -3277.0}, None),
+        ({"value": 41.5, "error": True}, None),
+        ({"value": None}, None),
+        ({"value": "Off"}, "Off"),
+    ],
+)
+def test_menu_value_check(api: MagicMock, item: dict[str, Any], expected: Any) -> None:
+    """Limit values and errors of a menu item give None, other values stay."""
+    device = make_device(api, [])
+    device.menu_items = [{"id": 124, "unit": "°C"} | item]
+
+    assert device.ch_return_temp_value == expected
+    assert device.ch_return_temp_unit == "°C"

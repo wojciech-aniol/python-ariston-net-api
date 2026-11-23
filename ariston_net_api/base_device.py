@@ -263,7 +263,8 @@ class AristonBaseDevice(ABC):
                 sequence["k"] == consumption_type.value
                 and sequence["p"] == time_interval.value
             ):
-                return sequence["v"][-1]
+                values = sequence.get("v")
+                return values[-1] if values else None
 
         return None
 

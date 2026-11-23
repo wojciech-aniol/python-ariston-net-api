@@ -8,6 +8,7 @@ import logging
 import math
 import re
 import time
+from collections import deque
 from typing import Any, NoReturn
 from urllib.parse import urlsplit
 
@@ -54,10 +55,123 @@ _DEFAULT_BLOCK_SECONDS = 60
 # the same account must see it too.
 _blocked_until: dict[tuple[str, str], float] = {}
 _AJAX_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
+# Some gateways answer 500 to the full data items request but not to
+# smaller parts. These limit the part requests in one read and how long
+# the parts are used before the full request is tried again.
+_MAX_PART_REQUESTS = 4
+_PARTS_SECONDS = 3600
+# Part count and its end (time.monotonic) per API URL and gateway.
+_data_item_parts: dict[tuple[str, str], tuple[int, float]] = {}
 
 
 class ConnectionException(Exception):
     """When can not connect to Ariston cloud"""
+
+
+def error_status(error: ConnectionException) -> int | None:
+    """Get the HTTP status of a cloud error, if it has one"""
+    status = error.args[0] if error.args else None
+    return status if isinstance(status, int) else None
+
+
+def _split(items: list[Any], count: int) -> list[list[Any]]:
+    """Split items in count parts of about the same size"""
+    size, rest = divmod(len(items), count)
+    parts = []
+    start = 0
+    for index in range(count):
+        end = start + size + (index < rest)
+        parts.append(items[start:end])
+        start = end
+    return [part for part in parts if part]
+
+
+class _DataItemParts:
+    """Asks for data items in parts after a 500 for all of them"""
+
+    def __init__(
+        self,
+        key: tuple[str, str],
+        items: list[Any],
+        count: int,
+        error: ConnectionException | None,
+    ) -> None:
+        self.key = key
+        self.items = items
+        self.first_error: ConnectionException | None = error
+        self.queue = deque((part, count) for part in _split(items, count))
+        self.sent = 0
+        self.answers: list[dict[str, Any]] = []
+        self.answered_items = 0
+        self.answered_count = 0
+
+    @staticmethod
+    def saved_count(key: tuple[str, str]) -> int:
+        """Get the part count to use now, 1 for the full request"""
+        count, until = _data_item_parts.get(key, (1, 0.0))
+        if until > time.monotonic():
+            return count
+        _data_item_parts.pop(key, None)
+        return 1
+
+    def next_part(self) -> tuple[list[Any], int] | None:
+        """Get the next part to ask for, None when done"""
+        if not self.queue or self.sent >= _MAX_PART_REQUESTS:
+            return None
+        self.sent += 1
+        return self.queue.popleft()
+
+    def add_answer(self, part: list[Any], count: int, answer: Any) -> None:
+        """Keep the answer of a part"""
+        self.answers.append(answer or {})
+        self.answered_items += len(part)
+        self.answered_count = max(self.answered_count, count)
+
+    def add_error(
+        self, part: list[Any], count: int, error: ConnectionException
+    ) -> None:
+        """Split a part that failed with 500, raise other errors"""
+        if error_status(error) != 500:
+            raise error
+        if self.first_error is None:
+            self.first_error = error
+        if len(part) > 2:
+            self.queue.extend((half, count * 2) for half in _split(part, 2))
+
+    def result(self) -> dict[str, Any]:
+        """Merge the answers, or raise the first error when none came"""
+        if not self.answers:
+            _data_item_parts.pop(self.key, None)
+            raise self.first_error or ConnectionException(500)
+        until = _data_item_parts.get(self.key, (0, 0.0))[1]
+        if until <= time.monotonic():
+            until = time.monotonic() + _PARTS_SECONDS
+            _LOGGER.warning(
+                "Data items failed with 500, asking in %s parts for %s s",
+                self.answered_count,
+                _PARTS_SECONDS,
+            )
+        _data_item_parts[self.key] = (self.answered_count, until)
+        if missing := len(self.items) - self.answered_items:
+            _LOGGER.warning("%s of %s data items failed", missing, len(self.items))
+        return {
+            **self.answers[0],
+            "items": [
+                item for answer in self.answers for item in answer.get("items", [])
+            ],
+        }
+
+
+def _data_items_body(
+    items: list[Any], features: dict[str, Any], culture: str
+) -> dict[str, Any]:
+    """Build the body of a data items request"""
+    return {
+        "useCache": False,
+        "items": items,
+        "features": features,
+        "culture": culture,
+    }
 
 
 class AristonAPI:
@@ -217,18 +331,36 @@ class AristonAPI:
         self, gw_id: str, features: dict[str, Any], culture: str, umsys: str
     ) -> dict[str, Any]:
         """Get device properties"""
-        properties = self._post(
-            f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_DATA_ITEMS}/{gw_id}/get?umsys={umsys}",
-            {
-                "useCache": False,
-                "items": self.get_items(features),
-                "features": features,
-                "culture": culture,
-            },
-        )
-        if properties is not None:
-            return properties
-        return {}
+        path = f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_DATA_ITEMS}/{gw_id}/get?umsys={umsys}"
+        items = self.get_items(features)
+        key = (self.__api_url, gw_id)
+        count = _DataItemParts.saved_count(key)
+        error = None
+        if count == 1:
+            try:
+                return (
+                    self._post(path, _data_items_body(items, features, culture)) or {}
+                )
+            except ConnectionException as full_error:
+                if error_status(full_error) != 500:
+                    raise
+                error = full_error
+                count = 2
+        parts = _DataItemParts(key, items, count, error)
+        while next_part := parts.next_part():
+            part, part_count = next_part
+            try:
+                answer = self.__request(
+                    "POST",
+                    path,
+                    body=_data_items_body(part, features, culture),
+                    retry_server_errors=False,
+                )
+            except ConnectionException as part_error:
+                parts.add_error(part, part_count, part_error)
+            else:
+                parts.add_answer(part, part_count, answer)
+        return parts.result()
 
     def get_bsb_plant_data(self, gw_id: str) -> dict[str, Any]:
         """Get BSB plant data."""
@@ -603,6 +735,7 @@ class AristonAPI:
         params: dict[str, Any] | None = None,
         body: Any = None,
         is_retry: bool = False,
+        retry_server_errors: bool = True,
     ) -> dict[str, Any] | None:
         """Request with requests"""
         self.__check_blocked()
@@ -632,7 +765,11 @@ class AristonAPI:
                     return None
                 case 429:
                     self.__raise_blocked(response.content)
-                case status if (status == 408 or status >= 500) and not is_retry:
+                case status if (
+                    (status == 408 or status >= 500)
+                    and retry_server_errors
+                    and not is_retry
+                ):
                     time.sleep(5)
                     return self.__request(method, path, params, body, True)
                 case _:
@@ -750,18 +887,39 @@ class AristonAPI:
         self, gw_id: str, features: dict[str, Any], culture: str, umsys: str
     ) -> dict[str, Any]:
         """Async get device properties"""
-        properties = await self._async_post(
-            f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_DATA_ITEMS}/{gw_id}/get?umsys={umsys}",
-            {
-                "useCache": False,
-                "items": self.get_items(features),
-                "features": features,
-                "culture": culture,
-            },
-        )
-        if properties is not None:
-            return properties
-        return {}
+        path = f"{self.__api_url}{ARISTON_REMOTE}/{ARISTON_DATA_ITEMS}/{gw_id}/get?umsys={umsys}"
+        items = self.get_items(features)
+        key = (self.__api_url, gw_id)
+        count = _DataItemParts.saved_count(key)
+        error = None
+        if count == 1:
+            try:
+                return (
+                    await self._async_post(
+                        path, _data_items_body(items, features, culture)
+                    )
+                    or {}
+                )
+            except ConnectionException as full_error:
+                if error_status(full_error) != 500:
+                    raise
+                error = full_error
+                count = 2
+        parts = _DataItemParts(key, items, count, error)
+        while next_part := parts.next_part():
+            part, part_count = next_part
+            try:
+                answer = await self.__async_request(
+                    "POST",
+                    path,
+                    body=_data_items_body(part, features, culture),
+                    retry_server_errors=False,
+                )
+            except ConnectionException as part_error:
+                parts.add_error(part, part_count, part_error)
+            else:
+                parts.add_answer(part, part_count, answer)
+        return parts.result()
 
     async def async_get_bsb_plant_data(self, gw_id: str) -> dict[str, Any]:
         """Get BSB plant data."""
@@ -1105,6 +1263,7 @@ class AristonAPI:
         params: dict[str, Any] | None = None,
         body: Any = None,
         is_retry: bool = False,
+        retry_server_errors: bool = True,
     ) -> dict[str, Any] | None:
         """Async request with aiohttp"""
         self.__check_blocked()
@@ -1145,7 +1304,11 @@ class AristonAPI:
                         return None
                     case 429:
                         self.__raise_blocked(await response.content.read())
-                    case status if (status == 408 or status >= 500) and not is_retry:
+                    case status if (
+                        (status == 408 or status >= 500)
+                        and retry_server_errors
+                        and not is_retry
+                    ):
                         await asyncio.sleep(5)
                         return await self.__async_request(
                             method, path, params, body, True
