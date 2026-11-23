@@ -7,7 +7,7 @@ import logging
 from datetime import date
 from typing import Any
 
-from .ariston_api import AristonAPI
+from .ariston_api import AristonAPI, ConnectionException, error_status
 from .const import (
     ConsumptionProperties,
     ConsumptionTimeInterval,
@@ -32,6 +32,22 @@ from .const import (
 from .device import AristonDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+# Menu request errors that keep the last menu items.
+_MENU_KEPT_ERRORS = frozenset({500, 550})
+# A missing probe reports one of these limit values.
+_MENU_LIMIT_VALUES = frozenset({3276.0, 3276.7, -3276.8, -3277.0})
+
+
+def _has_menu_value(item: dict[str, Any]) -> bool:
+    """Tell if a menu item holds a real value"""
+    value = item.get(PropertyType.VALUE)
+    if item.get("error") or value is None:
+        return False
+    try:
+        return float(value) not in _MENU_LIMIT_VALUES
+    except (TypeError, ValueError):
+        return True
 
 
 class AristonGalevoDevice(AristonDevice):
@@ -104,7 +120,11 @@ class AristonGalevoDevice(AristonDevice):
             self.language_tag,
             self.umsys,
         )
-        self.menu_items = self.api.get_menu_items(self.gw)
+        try:
+            self.menu_items = self.api.get_menu_items(self.gw)
+        except ConnectionException as error:
+            if not self._keep_menu_items(error):
+                raise
         self._update_state()
 
     async def async_update_state(self) -> None:
@@ -119,9 +139,25 @@ class AristonGalevoDevice(AristonDevice):
                 self.language_tag,
                 self.umsys,
             ),
-            self.api.async_get_menu_items(self.gw),
+            self._async_get_menu_items(),
         )
         self._update_state()
+
+    async def _async_get_menu_items(self) -> list[dict[str, Any]]:
+        """Async get menu items, or the last ones after a server error"""
+        try:
+            return await self.api.async_get_menu_items(self.gw)
+        except ConnectionException as error:
+            if not self._keep_menu_items(error):
+                raise
+            return self.menu_items
+
+    def _keep_menu_items(self, error: ConnectionException) -> bool:
+        """Tell if a menu request error keeps the last menu items"""
+        if error_status(error) not in _MENU_KEPT_ERRORS:
+            return False
+        _LOGGER.warning("Menu items failed (%s), keeping the last ones", error)
+        return True
 
     def _get_features(self) -> None:
         """Set custom features"""
@@ -628,15 +664,16 @@ class AristonGalevoDevice(AristonDevice):
         return None if value is None else bool(value)
 
     def _get_menu_item_by_id(self, menu_item_id: int, item_value: str) -> Any:
-        """Get item attribute from data"""
-        return next(
-            (
-                item.get(item_value)
-                for item in self.menu_items
-                if item.get("id") == menu_item_id
-            ),
+        """Get menu item attribute, None for a value the device does not have"""
+        item = next(
+            (item for item in self.menu_items if item.get("id") == menu_item_id),
             None,
         )
+        if item is None:
+            return None
+        if item_value == PropertyType.VALUE and not _has_menu_value(item):
+            return None
+        return item.get(item_value)
 
     @property
     def elect_cost(self) -> float | None:
